@@ -1,2 +1,2 @@
 # xcalibur_aries
-Firmware used for the ARIES project
+Firmware used for the ARES project
