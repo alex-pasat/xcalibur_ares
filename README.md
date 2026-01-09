@@ -1,2 +1,2 @@
-# xcalibur_aries
+# xcalibur_ares
 Firmware used for the ARES project
