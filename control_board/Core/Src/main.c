@@ -142,7 +142,23 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+    // send "Hello, World!" over UART1
+    const char *msg = "Hello, World!\r\n";
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+    HAL_Delay(100);
+
+    // send "Hello, World!" over UART3
+    HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+    HAL_Delay(100);
+
+    // send "Hello, World!" over SPI1
+    HAL_SPI_Transmit(&hspi1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+    HAL_Delay(100);
+
+    // send "Hello, World!" over I2C2 to a device
+    HAL_I2C_Master_Transmit_IT(&hi2c2, 20, (uint8_t *)msg, strlen(msg));
+    HAL_Delay(100);
+
   }
   /* USER CODE END 3 */
 }
