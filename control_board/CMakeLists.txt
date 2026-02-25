@@ -46,14 +46,14 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     HSM/Src/hsm.c
-    Drivers/Stepper/Src/stepper.c
+    Drivers/DRV8825/Src/drv8825.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     HSM/Inc
-    Drivers/Stepper/Inc
+    Drivers/DRV8825/Inc
 )
 
 # Add project symbols (macros)
