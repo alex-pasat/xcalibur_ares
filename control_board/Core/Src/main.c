@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "../../Drivers/DRV8825/Inc/drv8825.h"
+
 #include <string.h>
 /* USER CODE END Includes */
 
@@ -134,6 +136,19 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  drv8825_config_t spool_motor;
+
+  DRV8825_Init(&spool_motor,
+    GPIOD, GPIO_PIN_10, // step pin
+    GPIOD, GPIO_PIN_11, // dir pin
+    NULL, 0xFF, // en pin
+    NULL, 0xFF  // nfault pin
+  );
+
+  DRV8825_SetMaxSpeed(&spool_motor, 1000); 
+  DRV8825_SetSpeed(&spool_motor, 50);
+  DRV8825_EnableOutputs(&spool_motor);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -142,6 +157,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
+    /* USER CODE BEGIN 3 */
     // send "Hello, World!" over UART1
     const char *msg = "Hello, World!\r\n";
     HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
@@ -158,6 +174,8 @@ int main(void)
     // send "Hello, World!" over I2C2 to a device
     HAL_I2C_Master_Transmit_IT(&hi2c2, 20, (uint8_t *)msg, strlen(msg));
     HAL_Delay(100);
+
+    DRV8825_RunSpeed(&spool_motor);
 
   }
   /* USER CODE END 3 */

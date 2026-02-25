@@ -118,7 +118,7 @@ typedef struct
     uint32_t min_pulse_width;
 
     // Enable pin for stepper driver, or 0xFF if unused.
-    GPIO_TypeDef *en_port;
+    GPIO_TypeDef *en_port; // GPIO port for enable pin, or NULL if not used
     uint32_t en_pin;
     bool en_inverted;
 
