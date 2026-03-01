@@ -10,8 +10,8 @@
 
 typedef enum
 {
-    DIRECTION_CCW = GPIO_PIN_RESET,
-    DIRECTION_CW = GPIO_PIN_SET
+    DIRECTION_CCW = 0,
+    DIRECTION_CW = 1
 } drv8825_direction_e;
 
 #if STEPPER_MICROSTEP_ENABLED

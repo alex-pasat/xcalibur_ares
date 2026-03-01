@@ -125,7 +125,7 @@ void DRV8825_Init(drv8825_config_t *config,
 
     // Initialize GPIO pins
     HAL_GPIO_WritePin(config->en_port, config->en_pin, GPIO_PIN_SET); // Disable motor by default
-    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, DIRECTION_CW); // Default direction
+    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, GPIO_PIN_RESET); // Default direction
     HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_RESET); // Ensure step pin is low
     if (config->nfault_port != NULL)
         HAL_GPIO_WritePin(config->nfault_port, config->nfault_pin, GPIO_PIN_RESET); // Clear fault pin if used
