@@ -21,10 +21,17 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
+// standard library
+#include <string.h>
+
+// TINY
+#include "../../tiny/include/tiny_comm.h"
+
+// SERVO CONTROL
 #include "../../Drivers/DRV8825/Inc/drv8825.h"
 #include "stm32g4xx_hal_def.h"
 
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -148,7 +155,7 @@ int main(void)
   // DRV8825_SetSpeed(&spool_motor, 50);
   // DRV8825_EnableOutputs(&spool_motor);
   
-  const uint8_t msg = 0xA;
+  const uint32_t msg = 0xAAAA;
   HAL_StatusTypeDef res;
   /* USER CODE END 2 */
 
