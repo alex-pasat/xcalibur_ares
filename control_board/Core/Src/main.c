@@ -142,20 +142,20 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  // drv8825_config_t spool_motor;
+  drv8825_config_t spool_motor;
 
-  // DRV8825_Init(&spool_motor,
-  //   GPIOA, GPIO_PIN_15, // step pin
-  //   GPIOC, GPIO_PIN_10, // dir pin
-  //   NULL, 0xFF, // en pin
-  //   GPIOC, GPIO_PIN_11  // nfault pin
-  // );
+  DRV8825_Init(&spool_motor,
+    GPIOA, GPIO_PIN_15, // step pin
+    GPIOC, GPIO_PIN_10, // dir pin
+    NULL, 0xFF, // en pin
+    GPIOC, GPIO_PIN_11  // nfault pin
+  );
 
-  // DRV8825_SetMaxSpeed(&spool_motor, 1000); 
-  // DRV8825_SetSpeed(&spool_motor, 50);
-  // DRV8825_EnableOutputs(&spool_motor);
+  DRV8825_SetMaxSpeed(&spool_motor, 1000); 
+  DRV8825_SetSpeed(&spool_motor, 50);
+  DRV8825_EnableOutputs(&spool_motor);
   
-  const uint32_t msg = 0xAAAA;
+
   HAL_StatusTypeDef res;
   /* USER CODE END 2 */
 
@@ -167,28 +167,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    // send "Hello, World!" over UART1
-    // HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-    // HAL_Delay(100);
-
-    // // send "Hello, World!" over UART3
-    // HAL_UART_Transmit(&huart3, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
-    // HAL_Delay(100);
-
-    // send "Hello, World!" over SPI1
-    res = HAL_SPI_Transmit(&hspi1, (uint8_t *)&msg, 1, HAL_MAX_DELAY);
-    if (res != HAL_OK) {
-        Error_Handler();
-    }
-    HAL_Delay(100);
-
-    // // send "Hello, World!" over I2C2 to a device
-    // HAL_I2C_Master_Transmit_IT(&hi2c2, 20, (uint8_t *)msg, strlen(msg));
-    // HAL_Delay(100);
-
-    // DRV8825_RunSpeed(&spool_motor);
-
-    // blink LED 
+    DRV8825_RunSpeed(&spool_motor);
 
   }
   /* USER CODE END 3 */
@@ -367,19 +346,18 @@ static void MX_SPI1_Init(void)
   /* USER CODE END SPI1_Init 1 */
   /* SPI1 parameter configuration*/
   hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
+  hspi1.Init.Mode = SPI_MODE_SLAVE;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_HARD_INPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 7;
   hspi1.Init.CRCLength = SPI_CRC_LENGTH_DATASIZE;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   if (HAL_SPI_Init(&hspi1) != HAL_OK)
   {
     Error_Handler();
