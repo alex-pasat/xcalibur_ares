@@ -49,6 +49,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Core
     Core/Src/robot_config.c
+    Core/Src/robot_control.c
 
     # Motor Drivers
     Drivers/Motor_Drivers/Src/drv88xx.c

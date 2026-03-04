@@ -25,12 +25,12 @@
 // standard library
 #include <string.h>
 
-// TINY
-
-
 // SERVO CONTROL
 #include "stm32g4xx_hal_def.h"
 #include "robot_config.h"
+
+// STATE MACHINE
+#include "robot_control.h"
 
 /* USER CODE END Includes */
 
