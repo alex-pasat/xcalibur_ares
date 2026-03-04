@@ -47,14 +47,20 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Servo Lib
-    Drivers/DRV8825/Src/drv8825.c
+    # Core
+    Core/Src/robot_config.c
+
+    # Motor Drivers
+    Drivers/Motor_Drivers/Src/drv88xx.c
+    Drivers/Motor_Drivers/Src/drv8251.c
+    Drivers/Motor_Drivers/Src/encoder.c
+    Drivers/Motor_Drivers/Src/fan.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Servo Lib
-    Drivers/DRV8825/Inc
+    # Motor Drivers
+    Drivers/Motor_Drivers/Inc
 )
 
 # Add project symbols (macros)
