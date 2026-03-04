@@ -26,11 +26,11 @@
 #include <string.h>
 
 // TINY
-#include "../../tiny/include/tiny_comm.h"
+
 
 // SERVO CONTROL
-#include "../../Drivers/DRV8825/Inc/drv8825.h"
 #include "stm32g4xx_hal_def.h"
+#include "robot_config.h"
 
 /* USER CODE END Includes */
 
@@ -70,6 +70,14 @@ UART_HandleTypeDef huart3;
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
+static drv88xx_config_t *stepper_configs[] = {
+  &stepper_spool,
+  &stepper_raise1,
+  &stepper_raise2,
+  &stepper_underpass,
+  &stepper_bevel
+};
+#define STEPPER_COUNT (sizeof(stepper_configs) / sizeof(stepper_configs[0]))
 
 /* USER CODE END PV */
 
@@ -142,21 +150,13 @@ int main(void)
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  drv8825_config_t spool_motor;
+  // Initialize stepper motor configurations
+  for (uint8_t i = 0; i < STEPPER_COUNT; i++) {
+    DRV88xx_Init(stepper_configs[i]);
+  }
 
-  DRV8825_Init(&spool_motor,
-    GPIOA, GPIO_PIN_15, // step pin
-    GPIOC, GPIO_PIN_10, // dir pin
-    NULL, 0xFF, // en pin
-    GPIOC, GPIO_PIN_11  // nfault pin
-  );
+  // HOME STEPPERS??
 
-  DRV8825_SetMaxSpeed(&spool_motor, 1000); 
-  DRV8825_SetSpeed(&spool_motor, 50);
-  DRV8825_EnableOutputs(&spool_motor);
-  
-
-  HAL_StatusTypeDef res;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -166,8 +166,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-
-    DRV8825_RunSpeed(&spool_motor);
 
   }
   /* USER CODE END 3 */
@@ -1003,10 +1001,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : RAISE1_NFAULT_Pin PITCH_ENC_B_Pin PITCH_ENC_A_Pin SCLAMP1_ENC_B_Pin
-                           SCLAMP1_ENC_A_Pin RAISE2_NFAULT_Pin */
-  GPIO_InitStruct.Pin = RAISE1_NFAULT_Pin|PITCH_ENC_B_Pin|PITCH_ENC_A_Pin|SCLAMP1_ENC_B_Pin
-                          |SCLAMP1_ENC_A_Pin|RAISE2_NFAULT_Pin;
+  /*Configure GPIO pins : RAISE1_NFAULT_Pin RAISE2_NFAULT_Pin */
+  GPIO_InitStruct.Pin = RAISE1_NFAULT_Pin|RAISE2_NFAULT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -1043,12 +1039,18 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : KNIFECLAMP_ENC_B_Pin KNIFECLAMP_ENC_A_Pin YAW_ENC_B_Pin YAW_ENC_A_Pin
-                           SCLAMP2_ENC_B_Pin SCLAMP2_ENC_A_Pin BEVEL_STEP_Pin */
+                           SCLAMP2_ENC_B_Pin SCLAMP2_ENC_A_Pin */
   GPIO_InitStruct.Pin = KNIFECLAMP_ENC_B_Pin|KNIFECLAMP_ENC_A_Pin|YAW_ENC_B_Pin|YAW_ENC_A_Pin
-                          |SCLAMP2_ENC_B_Pin|SCLAMP2_ENC_A_Pin|BEVEL_STEP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+                          |SCLAMP2_ENC_B_Pin|SCLAMP2_ENC_A_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PITCH_ENC_B_Pin PITCH_ENC_A_Pin SCLAMP1_ENC_B_Pin SCLAMP1_ENC_A_Pin */
+  GPIO_InitStruct.Pin = PITCH_ENC_B_Pin|PITCH_ENC_A_Pin|SCLAMP1_ENC_B_Pin|SCLAMP1_ENC_A_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pin : RAISE2_STEP_Pin */
   GPIO_InitStruct.Pin = RAISE2_STEP_Pin;
@@ -1064,12 +1066,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : BEVEL_STEP_Pin */
+  GPIO_InitStruct.Pin = BEVEL_STEP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(BEVEL_STEP_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pins : UNDERPASS_DIR_Pin UNDERPASS_STEP_Pin */
   GPIO_InitStruct.Pin = UNDERPASS_DIR_Pin|UNDERPASS_STEP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   /* USER CODE END MX_GPIO_Init_2 */
