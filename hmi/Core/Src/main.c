@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
+  * @brief          : Main program body - XCalibur ARES (180 Deg Flipped Vertical)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -10,20 +10,47 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stdio.h"
+#include <stdint.h>
+#include <string.h>
 
 /* Private define ------------------------------------------------------------*/
 #define LCD_WIDTH   800
 #define LCD_HEIGHT  480
-#define FB_ADDRESS  0xC0000000UL      /* start of SDRAM Bank 1 */
-#define SRAM_ADDR   ((uint16_t*)FB_ADDRESS)
 
-static uint16_t *fb = (uint16_t *)FB_ADDRESS;    /* one word per pixel */
+/* --- Vertical UI Settings --- */
+#define UI_WIDTH    480
+#define UI_HEIGHT   800
+#define BANNER_HEIGHT 80
+
+/* Using the STM32H7's Internal AXI SRAM, bypassing the broken external chip! */
+#define INTERNAL_FB_ADDRESS  0x24000000UL  
+
+/* --- Colors (RGB565) --- */
+#define COLOR_WHITE 0xFFFF
+#define COLOR_BLUE  0x34BF 
+#define COLOR_BLACK 0x0000
+
+static uint16_t *fb = (uint16_t *)INTERNAL_FB_ADDRESS; 
 
 /* Private variables ---------------------------------------------------------*/
 LTDC_HandleTypeDef hltdc;
 SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim4;
-SDRAM_HandleTypeDef hsdram1;
+
+/* 8x8 Font Table for "XCALIBUR ARES " */
+const uint8_t font8x8_ares[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Space
+    0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81, // X
+    0x3C, 0x42, 0x80, 0x80, 0x80, 0x80, 0x42, 0x3C, // C
+    0x18, 0x24, 0x42, 0x42, 0x7E, 0x42, 0x42, 0x42, // A
+    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFE, // L
+    0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, // I
+    0xFC, 0x42, 0x42, 0x7C, 0x42, 0x42, 0x42, 0xFC, // B
+    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, // U
+    0xFC, 0x42, 0x42, 0x7C, 0x48, 0x44, 0x42, 0x42, // R
+    0xFE, 0x80, 0x80, 0xF8, 0x80, 0x80, 0x80, 0xFE, // E
+    0x3E, 0x40, 0x40, 0x3C, 0x02, 0x02, 0x42, 0x3C  // S
+};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -31,10 +58,11 @@ static void MX_GPIO_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM4_Init(void);
-static void MX_FMC_Init(void);
 void LCD_InitLayer(void);
-void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram);
-void Test_SRAM(void);
+void GUI_Framework(void);
+
+void UI_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
+void UI_DrawString(uint16_t x, uint16_t y, const char* str, uint16_t color);
 
 /**
   * @brief  The application entry point.
@@ -55,59 +83,113 @@ int main(void)
   HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
 
-  /* 1. Initialize Memory */
-  MX_FMC_Init();   
-  Test_SRAM(); 
+  /* Note: External SDRAM, FMC, and MPU are completely bypassed and unused */
   
-  /* 2. Turn on Display Hardware */
+  /* Turn on Display Hardware */
   HAL_GPIO_WritePin(DISP_GPIO_Port, DISP_Pin, GPIO_PIN_SET);
   
-  /* 3. Initialize LTDC and Framebuffer */
+  /* Initialize LTDC and Framebuffer */
   MX_LTDC_Init();
   LCD_InitLayer(); 
   
-  /* 4. Initialize Peripherals */
+  /* Initialize Peripherals */
   MX_SPI1_Init();
   MX_TIM4_Init();
 
-  /* 5. Turn on Backlight (TIM4 CH1) */
+  /* Turn on Backlight (TIM4 CH1) */
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 32767); // 50% Brightness (Max is 65535)
+  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 15000); // 50% Brightness
 
-  /* 6. Paint the Framebuffer Red */
-  for (uint32_t y = 0; y < LCD_HEIGHT; y++)
-  {
-    for (uint32_t x = 0; x < LCD_WIDTH; x++)
-    {
-        fb[y * LCD_WIDTH + x] = 0xF800;  // Solid RED in RGB565
-    }
-  }
+  /* Draw the UI Banner */
+  GUI_Framework();
 
   /* Infinite loop */
   while (1)
   {
-    // Heartbeat to show the main loop is running perfectly
+    // Heartbeat 
     HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
     HAL_Delay(500); 
   }
 }
 
 /**
-  * @brief Verify SDRAM hardware is functioning
+  * @brief Translates Vertical UI coordinates (Flipped 180 degrees)
   */
-void Test_SRAM(void)
+void UI_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
 {
-    for(uint32_t i = 0; i < 1024; i++) { SRAM_ADDR[i] = 0xA55A; }
-    for(uint32_t i = 0; i < 1024; i++) {
-        if(SRAM_ADDR[i] != 0xA55A) {
-            Error_Handler(); // Trap if memory fails
+    for (uint16_t i = 0; i < h; i++) {
+        uint16_t log_y = y + i;
+        if (log_y >= BANNER_HEIGHT) break; // Protect vertical banner bounds
+        
+        for (uint16_t j = 0; j < w; j++) {
+            uint16_t log_x = x + j;
+            if (log_x >= UI_WIDTH) break; // Protect horizontal width
+            
+            // MATH UPDATE: Rotate 90 degrees Counter-Clockwise (180 flip from before)
+            uint16_t buf_x = log_y; 
+            uint16_t buf_y = (LCD_HEIGHT - 1) - log_x;
+            
+            fb[buf_y * BANNER_HEIGHT + buf_x] = color;
         }
     }
 }
 
 /**
+  * @brief Prints a string to the screen
+  */
+void UI_DrawString(uint16_t x, uint16_t y, const char* str, uint16_t color) 
+{
+    while (*str) {
+        uint8_t glyph = 0;
+        char c = *str;
+        
+        if (c == ' ') glyph = 0;
+        else if (c == 'X') glyph = 1;
+        else if (c == 'C') glyph = 2;
+        else if (c == 'A') glyph = 3;
+        else if (c == 'L') glyph = 4;
+        else if (c == 'I') glyph = 5;
+        else if (c == 'B') glyph = 6;
+        else if (c == 'U') glyph = 7;
+        else if (c == 'R') glyph = 8;
+        else if (c == 'E') glyph = 9;
+        else if (c == 'S') glyph = 10;
+
+        for (int i = 0; i < 8; i++) {
+            uint8_t row = font8x8_ares[glyph * 8 + i];
+            for (int j = 0; j < 8; j++) {
+                if (row & (0x80 >> j)) {
+                    // Draw 3x3 pixel blocks to scale up the text
+                    UI_FillRect(x + (j * 3), y + (i * 3), 3, 3, color);
+                }
+            }
+        }
+        x += 30; // Move right for next letter
+        str++;
+    }
+}
+
+/**
+  * @brief Make general framework for gui
+  */
+void GUI_Framework(void)
+{
+  // 1. Fill the entire 80x480 internal buffer with Blue
+  for (uint32_t i = 0; i < (UI_WIDTH * BANNER_HEIGHT); i++)
+  {
+      fb[i] = COLOR_BLUE;
+  }
+
+  // 2. Draw Title Text inside the portrait blue bar
+  // Center roughly: X = 45, Y = 28
+  UI_DrawString(45, 28, "XCALIBUR ARES", COLOR_WHITE);
+
+  // 3. Push the pixels from the CPU Cache to our internal SRAM
+  SCB_CleanDCache_by_Addr((uint32_t*)fb, (UI_WIDTH * BANNER_HEIGHT * 2));
+}
+
+/**
   * @brief System Clock Configuration
-  * @retval None
   */
 void SystemClock_Config(void)
 {
@@ -188,9 +270,13 @@ static void MX_LTDC_Init(void)
   hltdc.Init.AccumulatedActiveH = 512;
   hltdc.Init.TotalWidth = 928;
   hltdc.Init.TotalHeigh = 525;
+  
+  // ---------------------------------------------------------
+  // Let the hardware paint the background White for us
   hltdc.Init.Backcolor.Blue = 0;
   hltdc.Init.Backcolor.Green = 0;
   hltdc.Init.Backcolor.Red = 0;
+  // ---------------------------------------------------------
   
   if (HAL_LTDC_Init(&hltdc) != HAL_OK)
   {
@@ -205,14 +291,22 @@ void LCD_InitLayer(void)
 {
     LTDC_LayerCfgTypeDef pLayerCfg = {0};
 
-    pLayerCfg.WindowX0      = 0;
-    pLayerCfg.WindowX1      = LCD_WIDTH  - 1;
-    pLayerCfg.WindowY0      = 0;
-    pLayerCfg.WindowY1      = LCD_HEIGHT - 1;
-    pLayerCfg.PixelFormat = LTDC_PIXEL_FORMAT_RGB565; 
-    pLayerCfg.FBStartAdress = FB_ADDRESS;
-    pLayerCfg.ImageWidth    = LCD_WIDTH;
-    pLayerCfg.ImageHeight   = LCD_HEIGHT;
+    // ---------------------------------------------------------
+    // MATH UPDATE: Move our small 80-pixel layer to the physical LEFT edge of the LCD.
+    // When you rotate the device 180 degrees from before (Ribbon at Top), 
+    // this becomes your TOP banner!
+    pLayerCfg.WindowX0      = 0; 
+    pLayerCfg.WindowX1      = BANNER_HEIGHT - 1;         // 79
+    pLayerCfg.WindowY0      = 0;                         
+    pLayerCfg.WindowY1      = LCD_HEIGHT - 1;            // 479
+    
+    pLayerCfg.PixelFormat   = LTDC_PIXEL_FORMAT_RGB565; 
+    pLayerCfg.FBStartAdress = INTERNAL_FB_ADDRESS; 
+    
+    pLayerCfg.ImageWidth    = BANNER_HEIGHT; 
+    pLayerCfg.ImageHeight   = LCD_HEIGHT; 
+    // ---------------------------------------------------------
+    
     pLayerCfg.Alpha         = 255;          /* opaque */
     pLayerCfg.Backcolor.Blue  = 0;
     pLayerCfg.Backcolor.Green = 0;
@@ -302,72 +396,6 @@ static void MX_TIM4_Init(void)
   HAL_TIM_MspPostInit(&htim4);
 }
 
-/* FMC initialization function */
-static void MX_FMC_Init(void)
-{
-  FMC_SDRAM_TimingTypeDef SdramTiming = {0};
-
-  hsdram1.Instance = FMC_SDRAM_DEVICE;
-  hsdram1.Init.SDBank = FMC_SDRAM_BANK1;
-  hsdram1.Init.ColumnBitsNumber = FMC_SDRAM_COLUMN_BITS_NUM_10;
-  hsdram1.Init.RowBitsNumber = FMC_SDRAM_ROW_BITS_NUM_13;
-  hsdram1.Init.MemoryDataWidth = FMC_SDRAM_MEM_BUS_WIDTH_8;
-  hsdram1.Init.InternalBankNumber = FMC_SDRAM_INTERN_BANKS_NUM_4;
-  hsdram1.Init.CASLatency = FMC_SDRAM_CAS_LATENCY_2;
-  hsdram1.Init.WriteProtection = FMC_SDRAM_WRITE_PROTECTION_DISABLE;
-  hsdram1.Init.SDClockPeriod = FMC_SDRAM_CLOCK_PERIOD_2;
-  hsdram1.Init.ReadBurst = FMC_SDRAM_RBURST_DISABLE;
-  hsdram1.Init.ReadPipeDelay = FMC_SDRAM_RPIPE_DELAY_0;
-  
-  SdramTiming.LoadToActiveDelay    = 2;
-  SdramTiming.ExitSelfRefreshDelay = 7;
-  SdramTiming.SelfRefreshTime      = 4;
-  SdramTiming.RowCycleDelay        = 7;
-  SdramTiming.WriteRecoveryTime    = 2;
-  SdramTiming.RPDelay              = 2;
-  SdramTiming.RCDDelay             = 2;
-
-  if (HAL_SDRAM_Init(&hsdram1, &SdramTiming) != HAL_OK)
-  {
-      Error_Handler();
-  }
-  SDRAM_Initialization_Sequence(&hsdram1);
-}
-
-void SDRAM_Initialization_Sequence(SDRAM_HandleTypeDef *hsdram)
-{
-    FMC_SDRAM_CommandTypeDef Command = {0};
-
-    /* Clock enable */
-    Command.CommandMode = FMC_SDRAM_CMD_CLK_ENABLE;
-    Command.CommandTarget = FMC_SDRAM_CMD_TARGET_BANK1;
-    Command.AutoRefreshNumber = 1;
-    Command.ModeRegisterDefinition = 0;
-    HAL_SDRAM_SendCommand(hsdram, &Command, HAL_MAX_DELAY);
-    HAL_Delay(1);
-
-    /* Precharge all */
-    Command.CommandMode = FMC_SDRAM_CMD_PALL;
-    HAL_SDRAM_SendCommand(hsdram, &Command, HAL_MAX_DELAY);
-
-    /* Auto refresh */
-    Command.CommandMode = FMC_SDRAM_CMD_AUTOREFRESH_MODE;
-    Command.AutoRefreshNumber = 8;
-    HAL_SDRAM_SendCommand(hsdram, &Command, HAL_MAX_DELAY);
-
-    /* Load mode register */
-    uint32_t mode = 0
-        | (0x0 << 0)    // burst length = 1
-        | (0x0 << 3)    // sequential
-        | (0x2 << 4);   // CAS latency 2
-
-    Command.CommandMode = FMC_SDRAM_CMD_LOAD_MODE;
-    Command.ModeRegisterDefinition = mode;
-    HAL_SDRAM_SendCommand(hsdram, &Command, HAL_MAX_DELAY);
-
-    HAL_SDRAM_ProgramRefreshRate(hsdram, 683);
-}
-
 /**
   * @brief GPIO Initialization Function
   */
@@ -426,13 +454,10 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-      // I highly recommend keeping this Red/Green dual blink here! 
-      // It costs nothing when the program is working, but instantly tells 
-      // you if something breaks during future development.
       HAL_GPIO_TogglePin(RED_LED_GPIO_Port, RED_LED_Pin);
       HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
       
-      for(volatile uint32_t i = 0; i < 2000000; i++) {} 
+      for(volatile uint32_t i = 0; i < 20000000; i++) {} 
   }
 }
 
