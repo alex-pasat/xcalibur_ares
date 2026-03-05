@@ -1,82 +1,53 @@
-/**
- * @file    robot_control.h
- * @brief   Robot arm state machine
- */
-
 #ifndef ROBOT_CONTROL_H
 #define ROBOT_CONTROL_H
 
-// -- Includes ----------------------------------------------------------------
-#include "tiny_hsm.h"
+#include "drv8251.h"
+#include "drv88xx.h"
+#include "encoder.h"
+#include "qpid.h"
+#include "stm32g491xx.h"
+#include "stm32g4xx.h"
 
-// -- Type Definitions --------------------------------------------------------
 
-typedef enum
-{
-    ROBOT_STATE_TOP,
+typedef struct {
+  drv88xx_config_t *config;
 
-    ROBOT_STATE_IDLE,
-    ROBOT_STATE_USER_INPUT,
-    ROBOT_STATE_CAMERA,
+  GPIO_TypeDef *limit_port; // Optional limit switch port
+  uint32_t limit_pin;       // Optional limit switch pin
 
-    ROBOT_STATE_MOVING,
-    ROBOT_STATE_HOME,
-    ROBOT_STATE_CLAMPING,
-    ROBOT_STATE_UNCLAMPING,
-    ROBOT_STATE_ARM, // TODO: rename to something more descriptive of the actual arm movement
-    ROBOT_STATE_SHARPENING,
+} stepper_ctrl_t;
 
-    ROBOT_STATE_FAULT,
-    ROBOT_STATE_ESTOP,
-} robot_state_t;
+typedef struct {
+  drv8251_config_t *drv; // PWM driver
+  enc_config_t *enc;     // Encoder
+  qPID_controller_t pid; // PID controller
 
-typedef enum
-{
-    SIG_CMD_ESTOP = tiny_hsm_signal_user_start + 1,
-    SIG_FAULT,
-    SIG_FAULT_CLEARED,  
+  GPIO_TypeDef *limit_port; // Optional limit switch port
+  uint32_t limit_pin;       // Optional limit switch pin
+  bool limit_active_high;
+  bool limit_triggered;
 
-    SIG_USER_INPUT,
-    SIG_CAMERA_INPUT,
+  GPIO_TypeDef *hall_port; // Optional hall effect sensor port
+  uint32_t hall_pin;       // Optional hall effect sensor pin
+  // We want to hall effect to act as a zero position reference
+  // so we can home the motor to a known position on startup.
+  // When the hall sensor is triggered, we will reset the encoder count to 0.
 
-    SIG_MOVE_COMPLETE,
-    SIG_CMD_HOME,
-    SIG_CMD_CLAMP,
-    SIG_CMD_UNCLAMP,
-    SIG_CMD_ARM, // TODO: rename to something more descriptive of the actual arm movement
-    SIG_CMD_SHARPEN,
-} robot_signal_t;
+  float target_rps; // Desired speed (rev/s)
+  float dt;         // Control loop period (seconds)
+  bool enabled;
+} motor_ctrl_t;
 
-// -- State Machine Configuration ---------------------------------------------
+void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
+                    enc_config_t *enc, qPID_controller_t *pid,
+                    qPID_Gains_t pid_gains, float dt);
 
-static const tiny_hsm_state_descriptor_t robot_hsm_states[] = {
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_TOP, .parent = tiny_hsm_no_parent},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_IDLE, .parent = (tiny_hsm_state_t)ROBOT_STATE_TOP},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_USER_INPUT, .parent = (tiny_hsm_state_t)ROBOT_STATE_IDLE},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_CAMERA, .parent = (tiny_hsm_state_t)ROBOT_STATE_IDLE},
+void MotorCtrl_SetTarget(motor_ctrl_t *ctrl, float target_rps);
 
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_MOVING, .parent = (tiny_hsm_state_t)ROBOT_STATE_TOP},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_HOME, .parent = (tiny_hsm_state_t)ROBOT_STATE_MOVING},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_CLAMPING, .parent = (tiny_hsm_state_t)ROBOT_STATE_MOVING},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_UNCLAMPING, .parent = (tiny_hsm_state_t)ROBOT_STATE_MOVING},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_ARM, .parent = (tiny_hsm_state_t)ROBOT_STATE_MOVING},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_SHARPENING, .parent = (tiny_hsm_state_t)ROBOT_STATE_MOVING},
+void MotorCtrl_Enable(motor_ctrl_t *ctrl);
 
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_FAULT, .parent = (tiny_hsm_state_t)ROBOT_STATE_TOP},
-    {.state = (tiny_hsm_state_t)ROBOT_STATE_ESTOP, .parent = (tiny_hsm_state_t)ROBOT_STATE_TOP},};
+void MotorCtrl_Disable(motor_ctrl_t *ctrl);
 
-//-- Function Prototypes ------------------------------------------------------
+void MotorCtrl_Update(motor_ctrl_t *ctrl);
 
-/**
- * @brief Initializes the robot HSM.
- * Call once before the main loop, after peripheral init.
- */
-void RobotControl_Init(void);
-
-/**
- * @brief Periodic 10 ms tick — polls joint completion and watchdog.
- *        Call from SysTick or a timer interrupt.
- */
-void RobotControl_Tick(void);
-
-#endif /* ROBOT_CONTROL_H */
+#endif // ROBOT_CONTROL_H

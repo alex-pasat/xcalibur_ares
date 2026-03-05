@@ -87,6 +87,10 @@ void Error_Handler(void);
 #define ADC_KNIFECLAMP_GPIO_Port GPIOA
 #define ADC_PUMP_Pin GPIO_PIN_1
 #define ADC_PUMP_GPIO_Port GPIOA
+#define UART_BEVEL_TX_Pin GPIO_PIN_4
+#define UART_BEVEL_TX_GPIO_Port GPIOC
+#define UART_BEVEL_RX_Pin GPIO_PIN_5
+#define UART_BEVEL_RX_GPIO_Port GPIOC
 #define LASER_SIG_Pin GPIO_PIN_0
 #define LASER_SIG_GPIO_Port GPIOB
 #define GPIO_1_Pin GPIO_PIN_1

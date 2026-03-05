@@ -47,8 +47,8 @@ typedef struct {
     float speed; // desired speed [-1.0, 1.0]
 
     // -- PWM config --
-    uint32_t tim_autoreload; // ARR value
     bool dir_inverted;
+    uint32_t tim_autoreload;
 
 } drv8251_config_t;
 

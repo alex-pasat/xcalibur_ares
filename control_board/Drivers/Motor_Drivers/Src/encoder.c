@@ -25,20 +25,22 @@ void Encoder_Init(enc_config_t *enc) {
     enc->velocity_rps = 0.0f;
 }
 
-void Encoder_ComputeVelocity(enc_config_t *enc, int32_t delta_ticks, float dt_s) {
+float Encoder_ComputeVelocity(enc_config_t *enc, int32_t delta_ticks, float dt_s) {
     enc->velocity_rps = ((float)delta_ticks / enc->counts_per_rev) / dt_s;
+    return enc->velocity_rps;
 }
 
-float DRV8251_Encoder_GetAngleDeg(const enc_config_t *enc) {
+float Encoder_GetAngleDeg(const enc_config_t *enc) {
     int32_t ticks_mod = enc->count % (int32_t)enc->counts_per_rev;
     if (ticks_mod < 0) ticks_mod += enc->counts_per_rev;
     return ((float)ticks_mod / (float)enc->counts_per_rev) * 360.0f;
 }
 
-void DRV8251_Encoder_Reset(enc_config_t *enc) {
+void Encoder_Reset(enc_config_t *enc) {
     enc->count      = 0;
     enc->last_state = 0;
 }
+
 
 void Encoder_EXTI_Callback(enc_config_t *enc) {
     uint8_t a_state = HAL_GPIO_ReadPin(enc->enc_a_port, enc->enc_a_pin) ? 1 : 0;

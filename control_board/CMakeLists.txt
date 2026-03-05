@@ -38,7 +38,8 @@ add_executable(${CMAKE_PROJECT_NAME})
 add_subdirectory(cmake/stm32cubemx)
 
 # Add tiny subdirectory
-add_subdirectory(tiny)
+add_subdirectory(lib/tiny)
+add_subdirectory(lib/qlibs)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -49,6 +50,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Core
     Core/Src/robot_config.c
+    Core/Src/robot_state.c
     Core/Src/robot_control.c
 
     # Motor Drivers
@@ -78,4 +80,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
     tiny
+    qlibs
 )
