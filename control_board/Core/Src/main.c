@@ -23,14 +23,12 @@
 /* USER CODE BEGIN Includes */
 
 // standard library
-#include <string.h>
 
 // MOTOR CONTROL
 #include "robot_config.h"
 
 // STATE MACHINE
 #include "robot_state.h"
-#include "stm32g4xx_hal_cortex.h"
 
 /* USER CODE END Includes */
 
@@ -171,8 +169,9 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
+
+    // TODO: call periodic function here or from timer interrupt
 
   }
   /* USER CODE END 3 */

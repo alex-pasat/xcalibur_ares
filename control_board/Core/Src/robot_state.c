@@ -161,6 +161,9 @@ static void handle_uart_data(const uint8_t *data, size_t len) {
   // TODO: figure out UART data format and implement handling logic
   // We want to be receiving continuous updates with reverse kinematics
   // data about the target velocity of motors
+  // This might be moved to reading the buffer in the movement state instead of
+  // as a receiving state since we will be receiving data continuously while moving
+  // talk to Hayden abt this
 }
 
 static tiny_hsm_result_t state_receiving_uart(tiny_hsm_t *hsm,

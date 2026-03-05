@@ -14,6 +14,7 @@ typedef struct {
 
   GPIO_TypeDef *limit_port; // Optional limit switch port
   uint32_t limit_pin;       // Optional limit switch pin
+  // TODO: implement limit switch handling in the state machine
 
 } stepper_ctrl_t;
 
@@ -29,9 +30,9 @@ typedef struct {
 
   GPIO_TypeDef *hall_port; // Optional hall effect sensor port
   uint32_t hall_pin;       // Optional hall effect sensor pin
-  // We want to hall effect to act as a zero position reference
+  // TODO: We want to hall effect to act as a zero position reference
   // so we can home the motor to a known position on startup.
-  // When the hall sensor is triggered, we will reset the encoder count to 0.
+  // When the hall sensor is triggered, we will reset the encoder count to 0
 
   float target_rps; // Desired speed (rev/s)
   float dt;         // Control loop period (seconds)

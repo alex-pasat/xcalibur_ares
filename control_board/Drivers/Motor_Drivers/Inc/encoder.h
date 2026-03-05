@@ -39,6 +39,21 @@ float Encoder_GetAngleDeg(const enc_config_t *enc);
 
 void Encoder_Reset(enc_config_t *enc);
 
+
+/**
+  * @brief EXTI callback to be called from HAL_GPIO_EXTI_Callback() in main.c
+  *        This will update the encoder count based on the state of the A and B
+  *        pins. It uses a quadrature encoder matrix to determine the direction of
+  *        rotation and update the count accordingly.
+  * @param enc Pointer to the encoder configuration struct for the encoder being updated
+  * @note This function should be called from the EXTI interrupt handler for the
+  *       encoder pins. You will need to set up the EXTI interrupts for the
+  *       encoder pins in your main.c and call this function with the appropriate
+  *       encoder config struct when an interrupt occurs on those pins.
+  * @note This function assumes that both A and B pins are configured to trigger
+  *       interrupts on both rising and falling edges, so it will be called on
+  *       every change of state of either pin.
+  */
 void Encoder_EXTI_Callback(enc_config_t *enc);
 
 #endif /* ENCODER_H */

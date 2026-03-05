@@ -27,6 +27,7 @@ void DRV8251_Init(drv8251_config_t *config) {
 }
 
 void DRV8251_SetSpeed(drv8251_config_t *config, float speed) {
+    // TODO: check if this is set up correctly
     // Clamp speed to [-1.0, 1.0]
     if (speed > 1.0f) speed = 1.0f;
     if (speed < -1.0f) speed = -1.0f;
