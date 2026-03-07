@@ -25,6 +25,11 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/sysmem.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/syscalls.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/chef_knife_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gyuto_knife_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/paring_knife_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/utility_knife_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/josh_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/xcalibur_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../startup_stm32h743xx.s
 )
 

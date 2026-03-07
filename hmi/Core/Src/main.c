@@ -2,7 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body - XCalibur ARES (180 Deg Flipped Vertical)
+  * @brief          : Main program body - XCalibur ARES (Dynamic UI, Musical PWM)
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -14,55 +14,187 @@
 #include <string.h>
 
 /* Private define ------------------------------------------------------------*/
+// Physical screen dimensions
 #define LCD_WIDTH   800
 #define LCD_HEIGHT  480
+
+// Knife Image Dimensions
+#define IMAGE_WIDTH  200
+#define IMAGE_HEIGHT 200
+
+// Splash Logo Dimensions
+#define SPLASH_WIDTH  400
+#define SPLASH_HEIGHT 475
+
+// Link to your image data in the other files. 
+extern const uint8_t chef_knife_image[]; 
+extern const uint8_t paring_knife_image[]; 
+extern const uint8_t gyuto_knife_image[]; 
+extern const uint8_t utility_knife_image[]; 
+extern const uint8_t xcalibur_image[]; 
+extern const uint8_t josh_image[]; 
 
 /* --- Vertical UI Settings --- */
 #define UI_WIDTH    480
 #define UI_HEIGHT   800
 #define BANNER_HEIGHT 80
 
-/* Using the STM32H7's Internal AXI SRAM, bypassing the broken external chip! */
+/* Using the STM32H7's Internal AXI SRAM */
 #define INTERNAL_FB_ADDRESS  0x24000000UL  
 
-/* --- Colors (RGB565) --- */
-#define COLOR_WHITE 0xFFFF
-#define COLOR_BLUE  0x34BF 
-#define COLOR_BLACK 0x0000
+// FRAMEBUFFER POINTER - Layer 0 uses L8 Mode (1 byte per pixel)
+static uint8_t *fb = (uint8_t *)INTERNAL_FB_ADDRESS; 
 
-static uint16_t *fb = (uint16_t *)INTERNAL_FB_ADDRESS; 
+/* --- L8 Color Palette Indices (Layer 0) --- */
+#define L8_BLACK 0
+#define L8_BLUE  1
+#define L8_WHITE 2
+#define L8_RED   3
+
+/* --- State Machine Defintions --- */
+// Define encompassing states for the UI
+typedef enum {
+    STATE_KNIFE_SELECTION,
+    STATE_INSERTION,
+    STATE_TOOL_LET_GO,
+    STATE_SHARPENING,
+    STATE_DONE_REMOVE
+} UI_State_t;
+
+// Knife Selection
+typedef enum {
+    CHEF_KNIFE,
+    PARING_KNIFE,
+    GYUTO_KNIFE,
+    JAPANESE_UTILITY_KNIFE,
+} KnifeType_t;
+
+// Initialize our starting states
+UI_State_t current_ui_state = STATE_KNIFE_SELECTION;
+KnifeType_t current_knife = CHEF_KNIFE;
 
 /* Private variables ---------------------------------------------------------*/
 LTDC_HandleTypeDef hltdc;
 SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim4;
 
-/* 8x8 Font Table for "XCALIBUR ARES " */
-const uint8_t font8x8_ares[] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Space
-    0x81, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0x81, // X
-    0x3C, 0x42, 0x80, 0x80, 0x80, 0x80, 0x42, 0x3C, // C
-    0x18, 0x24, 0x42, 0x42, 0x7E, 0x42, 0x42, 0x42, // A
-    0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFE, // L
-    0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, // I
-    0xFC, 0x42, 0x42, 0x7C, 0x42, 0x42, 0x42, 0xFC, // B
-    0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x3C, // U
-    0xFC, 0x42, 0x42, 0x7C, 0x48, 0x44, 0x42, 0x42, // R
-    0xFE, 0x80, 0x80, 0xF8, 0x80, 0x80, 0x80, 0xFE, // E
-    0x3E, 0x40, 0x40, 0x3C, 0x02, 0x02, 0x42, 0x3C  // S
+/* Complete 8x8 ASCII Font Table (Characters 32 to 126) */
+const uint8_t font8x8_ascii[96][8] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // 32 ' '
+    {0x18, 0x3C, 0x3C, 0x18, 0x18, 0x00, 0x18, 0x00}, // 33 '!'
+    {0x66, 0x66, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00}, // 34 '"'
+    {0x6C, 0x6C, 0xFE, 0x6C, 0xFE, 0x6C, 0x6C, 0x00}, // 35 '#'
+    {0x18, 0x3E, 0x60, 0x3C, 0x06, 0x7C, 0x18, 0x00}, // 36 '$'
+    {0x00, 0xC6, 0xCC, 0x18, 0x30, 0x66, 0xC6, 0x00}, // 37 '%'
+    {0x38, 0x6C, 0x38, 0x76, 0xDC, 0xCC, 0x76, 0x00}, // 38 '&'
+    {0x18, 0x18, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00}, // 39 '''
+    {0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00}, // 40 '('
+    {0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00}, // 41 ')'
+    {0x00, 0x66, 0x3C, 0xFF, 0x3C, 0x66, 0x00, 0x00}, // 42 '*'
+    {0x00, 0x18, 0x18, 0x7E, 0x18, 0x18, 0x00, 0x00}, // 43 '+'
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x30}, // 44 ','
+    {0x00, 0x00, 0x00, 0x7E, 0x00, 0x00, 0x00, 0x00}, // 45 '-'
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x18, 0x18, 0x00}, // 46 '.'
+    {0x00, 0x02, 0x06, 0x1C, 0x38, 0x60, 0x40, 0x00}, // 47 '/'
+    {0x3C, 0x66, 0x6E, 0x76, 0x66, 0x66, 0x3C, 0x00}, // 48 '0'
+    {0x18, 0x38, 0x18, 0x18, 0x18, 0x18, 0x7E, 0x00}, // 49 '1'
+    {0x3C, 0x66, 0x06, 0x1C, 0x30, 0x60, 0x7E, 0x00}, // 50 '2'
+    {0x3C, 0x66, 0x06, 0x1C, 0x06, 0x66, 0x3C, 0x00}, // 51 '3'
+    {0x1C, 0x3C, 0x6C, 0xCC, 0xFE, 0x0C, 0x0C, 0x00}, // 52 '4'
+    {0x7E, 0x60, 0x7C, 0x06, 0x06, 0x66, 0x3C, 0x00}, // 53 '5'
+    {0x3C, 0x66, 0x60, 0x7C, 0x66, 0x66, 0x3C, 0x00}, // 54 '6'
+    {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x30, 0x30, 0x00}, // 55 '7'
+    {0x3C, 0x66, 0x66, 0x3C, 0x66, 0x66, 0x3C, 0x00}, // 56 '8'
+    {0x3C, 0x66, 0x66, 0x3E, 0x06, 0x66, 0x3C, 0x00}, // 57 '9'
+    {0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x00}, // 58 ':'
+    {0x00, 0x18, 0x18, 0x00, 0x00, 0x18, 0x18, 0x30}, // 59 ';'
+    {0x0C, 0x18, 0x30, 0x60, 0x30, 0x18, 0x0C, 0x00}, // 60 '<'
+    {0x00, 0x00, 0x7E, 0x00, 0x7E, 0x00, 0x00, 0x00}, // 61 '='
+    {0x30, 0x18, 0x0C, 0x06, 0x0C, 0x18, 0x30, 0x00}, // 62 '>'
+    {0x3C, 0x66, 0x06, 0x1C, 0x18, 0x00, 0x18, 0x00}, // 63 '?'
+    {0x3C, 0x66, 0x6E, 0x6E, 0x60, 0x66, 0x3C, 0x00}, // 64 '@'
+    {0x18, 0x3C, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x00}, // 65 'A'
+    {0x7C, 0x66, 0x66, 0x7C, 0x66, 0x66, 0x7C, 0x00}, // 66 'B'
+    {0x3C, 0x66, 0x60, 0x60, 0x60, 0x66, 0x3C, 0x00}, // 67 'C'
+    {0x78, 0x6C, 0x66, 0x66, 0x66, 0x6C, 0x78, 0x00}, // 68 'D'
+    {0x7E, 0x60, 0x60, 0x78, 0x60, 0x60, 0x7E, 0x00}, // 69 'E'
+    {0x7E, 0x60, 0x60, 0x78, 0x60, 0x60, 0x60, 0x00}, // 70 'F'
+    {0x3C, 0x66, 0x60, 0x6E, 0x66, 0x66, 0x3C, 0x00}, // 71 'G'
+    {0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00}, // 72 'H'
+    {0x3C, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00}, // 73 'I'
+    {0x06, 0x06, 0x06, 0x06, 0x06, 0x66, 0x3C, 0x00}, // 74 'J'
+    {0x66, 0x6C, 0x78, 0x70, 0x78, 0x6C, 0x66, 0x00}, // 75 'K'
+    {0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x7E, 0x00}, // 76 'L'
+    {0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x63, 0x00}, // 77 'M'
+    {0x66, 0x76, 0x7E, 0x7E, 0x6E, 0x66, 0x66, 0x00}, // 78 'N'
+    {0x3C, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00}, // 79 'O'
+    {0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60, 0x60, 0x00}, // 80 'P'
+    {0x3C, 0x66, 0x66, 0x66, 0x66, 0x6E, 0x3C, 0x02}, // 81 'Q'
+    {0x7C, 0x66, 0x66, 0x7C, 0x6C, 0x66, 0x66, 0x00}, // 82 'R'
+    {0x3C, 0x66, 0x60, 0x3C, 0x06, 0x66, 0x3C, 0x00}, // 83 'S'
+    {0x7E, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x00}, // 84 'T'
+    {0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x00}, // 85 'U'
+    {0x66, 0x66, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00}, // 86 'V'
+    {0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00}, // 87 'W'
+    {0x66, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x66, 0x00}, // 88 'X'
+    {0x66, 0x66, 0x66, 0x3C, 0x18, 0x18, 0x18, 0x00}, // 89 'Y'
+    {0x7E, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x7E, 0x00}, // 90 'Z'
+    {0x3C, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3C, 0x00}, // 91 '['
+    {0x00, 0x40, 0x60, 0x38, 0x1C, 0x06, 0x02, 0x00}, // 92 '\'
+    {0x3C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3C, 0x00}, // 93 ']'
+    {0x18, 0x3C, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00}, // 94 '^'
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF}, // 95 '_'
+    {0x30, 0x18, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00}, // 96 '`'
+    {0x00, 0x00, 0x3C, 0x06, 0x3E, 0x66, 0x3E, 0x00}, // 97 'a'
+    {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x7C, 0x00}, // 98 'b'
+    {0x00, 0x00, 0x3C, 0x60, 0x60, 0x60, 0x3C, 0x00}, // 99 'c'
+    {0x06, 0x06, 0x3E, 0x66, 0x66, 0x66, 0x3E, 0x00}, // 100 'd'
+    {0x00, 0x00, 0x3C, 0x66, 0x7E, 0x60, 0x3C, 0x00}, // 101 'e'
+    {0x1C, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x30, 0x00}, // 102 'f'
+    {0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x3C}, // 103 'g'
+    {0x60, 0x60, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00}, // 104 'h'
+    {0x18, 0x00, 0x38, 0x18, 0x18, 0x18, 0x3C, 0x00}, // 105 'i'
+    {0x06, 0x00, 0x06, 0x06, 0x06, 0x66, 0x3C, 0x00}, // 106 'j'
+    {0x60, 0x60, 0x66, 0x6C, 0x78, 0x6C, 0x66, 0x00}, // 107 'k'
+    {0x38, 0x18, 0x18, 0x18, 0x18, 0x18, 0x3C, 0x00}, // 108 'l'
+    {0x00, 0x00, 0x76, 0x7F, 0x6B, 0x6B, 0x6B, 0x00}, // 109 'm'
+    {0x00, 0x00, 0x7C, 0x66, 0x66, 0x66, 0x66, 0x00}, // 110 'n'
+    {0x00, 0x00, 0x3C, 0x66, 0x66, 0x66, 0x3C, 0x00}, // 111 'o'
+    {0x00, 0x00, 0x7C, 0x66, 0x66, 0x7C, 0x60, 0x60}, // 112 'p'
+    {0x00, 0x00, 0x3E, 0x66, 0x66, 0x3E, 0x06, 0x06}, // 113 'q'
+    {0x00, 0x00, 0x7C, 0x66, 0x60, 0x60, 0x60, 0x00}, // 114 'r'
+    {0x00, 0x00, 0x3C, 0x60, 0x3C, 0x06, 0x3C, 0x00}, // 115 's'
+    {0x30, 0x30, 0x7C, 0x30, 0x30, 0x30, 0x1C, 0x00}, // 116 't'
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x66, 0x3E, 0x00}, // 117 'u'
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x3C, 0x18, 0x00}, // 118 'v'
+    {0x00, 0x00, 0x63, 0x6B, 0x7F, 0x3E, 0x36, 0x00}, // 119 'w'
+    {0x00, 0x00, 0x66, 0x3C, 0x18, 0x3C, 0x66, 0x00}, // 120 'x'
+    {0x00, 0x00, 0x66, 0x66, 0x66, 0x3E, 0x0C, 0x38}, // 121 'y'
+    {0x00, 0x00, 0x7E, 0x0C, 0x18, 0x30, 0x7E, 0x00}, // 122 'z'
+    {0x0E, 0x18, 0x18, 0x70, 0x18, 0x18, 0x0E, 0x00}, // 123 '{'
+    {0x18, 0x18, 0x18, 0x00, 0x18, 0x18, 0x18, 0x00}, // 124 '|'
+    {0x70, 0x18, 0x18, 0x0E, 0x18, 0x18, 0x70, 0x00}, // 125 '}'
+    {0x3A, 0x6E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}  // 126 '~'
 };
 
 /* Private function prototypes -----------------------------------------------*/
+void MPU_Config(void);
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_LTDC_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM4_Init(void);
 void LCD_InitLayer(void);
-void GUI_Framework(void);
 
-void UI_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color);
-void UI_DrawString(uint16_t x, uint16_t y, const char* str, uint16_t color);
+// UI & Audio Functions
+void GUI_Framework(void);
+void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_array, uint8_t text_size);
+void L8_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t colorIndex);
+void L8_DrawString(uint16_t x, uint16_t y, const char* str, uint8_t colorIndex, uint8_t scale);
+void L8_DrawPixel(uint16_t x, uint16_t y, uint8_t colorIndex);
+void Startup_Splash_Screen(void);
+void Play_Startup_Tune(void);
+uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
 
 /**
   * @brief  The application entry point.
@@ -70,21 +202,20 @@ void UI_DrawString(uint16_t x, uint16_t y, const char* str, uint16_t color);
   */
 int main(void)
 {
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  /* 1. Configure MPU and Reset Peripherals */
+  MPU_Config();
   HAL_Init();
 
-  /* Configure the system clock */
+  /* 2. Configure the system clock */
   SystemClock_Config();
 
-  /* Initialize all configured peripherals */
+  /* 3. Initialize Basic Peripherals */
   MX_GPIO_Init();
   
-  // Ensure LEDs start OFF
+  // Keep LEDs OFF initially
   HAL_GPIO_WritePin(RED_LED_GPIO_Port, RED_LED_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin, GPIO_PIN_RESET);
 
-  /* Note: External SDRAM, FMC, and MPU are completely bypassed and unused */
-  
   /* Turn on Display Hardware */
   HAL_GPIO_WritePin(DISP_GPIO_Port, DISP_Pin, GPIO_PIN_SET);
   
@@ -92,100 +223,415 @@ int main(void)
   MX_LTDC_Init();
   LCD_InitLayer(); 
   
-  /* Initialize Peripherals */
+  /* Initialize Comms and PWM */
   MX_SPI1_Init();
-  MX_TIM4_Init();
+  MX_TIM4_Init(); 
 
-  /* Turn on Backlight (TIM4 CH1) */
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 15000); // 50% Brightness
-
-  /* Draw the UI Banner */
+  /* --- INITIALIZE UI --- */
+  
+  /* Show Splash Logo and Play Audio Chime */
+  Startup_Splash_Screen();
+  
+  /* 1. Draw the static UI Framework (Blue Banner) */
   GUI_Framework();
 
+  /* 2. Draw Dynamic UI (Arrows, Text) and link Image to Layer 1 */
+  Update_Tool_UI(1, "German Steel Chef Knife", chef_knife_image, 2);
+
+  /* 3. Force Hardware Update to sync both layers */
+  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+
   /* Infinite loop */
-  while (1)
+while (1)
   {
-    // Heartbeat 
-    HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-    HAL_Delay(500); 
+      // --- MAIN OVERSEEING STATE MACHINE ---
+      switch (current_ui_state) 
+      {
+          case STATE_KNIFE_SELECTION:
+              // ---------------------------------------------------
+              // SUB-FSM: KNIFE SCROLLING
+              // ---------------------------------------------------
+              if (Button_Pressed(RIGHT_BTTN_GPIO_Port, RIGHT_BTTN_Pin)) {
+                  // Cycle right through 4 knives
+                  if (current_knife == CHEF_KNIFE) { current_knife = PARING_KNIFE; Update_Tool_UI(1, "Paring Knife", paring_knife_image, 2); }
+                  else if (current_knife == PARING_KNIFE) { current_knife = GYUTO_KNIFE; Update_Tool_UI(1, "Japanese Gyuto Knife", gyuto_knife_image, 2); }
+                  else if (current_knife == GYUTO_KNIFE) { current_knife = JAPANESE_UTILITY_KNIFE; Update_Tool_UI(1, "Japanese Utility Knife", utility_knife_image, 2); }
+                  else if (current_knife == JAPANESE_UTILITY_KNIFE) { current_knife = CHEF_KNIFE; Update_Tool_UI(1, "German Chef Knife", chef_knife_image, 2); }
+                  
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              }
+              else if (Button_Pressed(LEFT_BTTN_GPIO_Port, LEFT_BTTN_Pin)) {
+                  // Cycle left through 4 knives
+                  if (current_knife == CHEF_KNIFE) { current_knife = JAPANESE_UTILITY_KNIFE; Update_Tool_UI(1, "Japanese Utility", utility_knife_image, 2); }
+                  else if (current_knife == JAPANESE_UTILITY_KNIFE) { current_knife = GYUTO_KNIFE; Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image, 2); }
+                  else if (current_knife == GYUTO_KNIFE) { current_knife = PARING_KNIFE; Update_Tool_UI(1, "Paring Knife", paring_knife_image, 2); }
+                  else if (current_knife == PARING_KNIFE) { current_knife = CHEF_KNIFE; Update_Tool_UI(1, "German Chef Knife", chef_knife_image, 2); }
+                  
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              }
+              // ---------------------------------------------------
+              // SELECTION TRIGGER -> Transition to next System State
+              // ---------------------------------------------------
+              else if (Button_Pressed(SELECT_BTTN_GPIO_Port, SELECT_BTTN_Pin)) {
+                  // 1. Send SPI Packet
+                  //SPI_Send_Tool_Selection(current_knife);
+                  //TODO: Implement SPI
+                  
+                  // 2. Change Screen
+                  Update_Tool_UI(0, "Please Enter Knife", josh_image, 2); // Pass NULL to hide image, 0 to hide arrows
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  
+                  // 3. Advance Main FSM
+                  current_ui_state = STATE_INSERTION;
+              }
+              break;
+
+          case STATE_INSERTION:
+              // Poll main board until it says the knife is detected
+              /*if (SPI_Poll_Main_Board() == 1) { // Assuming 1 = Knife Found
+                  Update_Tool_UI(0, "Let go of knife!", NULL);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  
+                  // Advance FSM
+                  current_ui_state = STATE_TOOL_LET_GO;
+              }*/ 
+              //TODO: Implement SPI here too
+              break;
+
+          case STATE_TOOL_LET_GO:
+              // Block for 3 seconds to let the user back away safely
+              HAL_Delay(3000); 
+              
+              // The main board operates the clamp now. Change UI to sharpening.
+              Update_Tool_UI(0, "Sharpening in progress...", NULL, 2);
+              HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              
+              current_ui_state = STATE_SHARPENING;
+              break;
+
+          case STATE_SHARPENING:
+              // Poll main board until sharpening is completely finished
+              /*if (SPI_Poll_Main_Board() == 2) { // Assuming 2 = Sharpening Done
+                  
+                  // Play success chime!
+                  Play_Startup_Tune(); 
+                  
+                  Update_Tool_UI(0, "Knife sharpened! Remove knife.", NULL);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  
+                  current_ui_state = STATE_DONE_REMOVE;
+              }*/
+              //TODO: Implement SPI here too
+              break;
+
+          case STATE_DONE_REMOVE:
+              // Poll main board to check if the user physically pulled it out
+              /*if (SPI_Poll_Main_Board() == 3) { // Assuming 3 = Knife Removed
+                  
+                  // Redraw the specific knife they were just looking at
+                  switch(current_knife) {
+                      case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image); break;
+                      case PARING_KNIFE: Update_Tool_UI(1, "Paring Knife", paring_knife_image); break;
+                      case GYUTO_KNIFE: Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image); break;
+                      case JAPANESE_UTILITY_KNIFE: Update_Tool_UI(1, "Japanese Utility", utility_knife_image); break;
+                  }
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  
+                  // Loop back to the very beginning!
+                  current_ui_state = STATE_KNIFE_SELECTION;
+                  //TODO: Implement SPI here too
+              }*/
+              break;
+      }
   }
 }
 
 /**
-  * @brief Translates Vertical UI coordinates (Flipped 180 degrees)
+  * @brief Reads an Active-High button, safely debounces it, and plays a click sound
   */
-void UI_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t color)
+uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 {
-    for (uint16_t i = 0; i < h; i++) {
-        uint16_t log_y = y + i;
-        if (log_y >= BANNER_HEIGHT) break; // Protect vertical banner bounds
+    // 1. Check if the button is pressed (Pin goes to 3.3V / SET)
+    if (HAL_GPIO_ReadPin(GPIOx, GPIO_Pin) == GPIO_PIN_SET) 
+    {
+        HAL_Delay(50); // 50ms Debounce delay
         
-        for (uint16_t j = 0; j < w; j++) {
-            uint16_t log_x = x + j;
-            if (log_x >= UI_WIDTH) break; // Protect horizontal width
+        // --- PLAY BUTTON CLICK SOUND ---
+        __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 125);
+        HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+        HAL_Delay(15); 
+        HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+        // -------------------------------
+        
+        // 2. Wait for the user to let go (Pin drops back to 0V / RESET)
+        while(HAL_GPIO_ReadPin(GPIOx, GPIO_Pin) == GPIO_PIN_SET) {} 
+        
+        return 1; // Button was successfully pressed and released
+    }
+    return 0; // Not pressed
+}
+
+/**
+  * @brief Plays a musical 4-note arpeggio (C-Major) using PWM
+  */
+void Play_Startup_Tune(void)
+{
+    // The intro relies on deep-house piano chords. 
+    // We use the highest notes of the chords to recreate the exact 
+    // syncopated, upbeat rhythm!
+    //
+    // Frequencies mapped to a 1MHz timer ARR:
+    // C5 = 1912, Bb4 = 2145, Ab4 = 2409, 0 = Rest (Silence)
+    
+    uint16_t notes[] = {
+        1912, 0,    // Beat 1 hit (C5)
+        1912, 0,    // Syncopated off-beat hit (C5)
+        2145, 0,    // Beat 4 hit (Bb4)
+        2409, 0,    // Next measure Beat 1 (Ab4)
+        2409, 0,    // Syncopated off-beat hit (Ab4)
+        2145        // Beat 4 hit (Bb4)
+    };
+    
+    // Durations to match the ~122 BPM house groove (~3 seconds total)
+    uint16_t durations[] = {
+        250, 240, 
+        200, 360, 
+        300, 150, 
+        250, 240, 
+        200, 360, 
+        300
+    };
+
+    int total_steps = sizeof(notes) / sizeof(notes[0]);
+
+    for(int i = 0; i < total_steps; i++) {
+        uint16_t current_arr = notes[i];
+        
+        if (current_arr == 0) {
+            // It is a musical rest (Silence)
+            HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+            HAL_Delay(durations[i]);
+        } else {
+            // Change pitch
+            __HAL_TIM_SET_AUTORELOAD(&htim4, current_arr);
             
-            // MATH UPDATE: Rotate 90 degrees Counter-Clockwise (180 flip from before)
-            uint16_t buf_x = log_y; 
-            uint16_t buf_y = (LCD_HEIGHT - 1) - log_x;
+            // Set 50% duty cycle for maximum volume
+            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, current_arr / 2); 
             
-            fb[buf_y * BANNER_HEIGHT + buf_x] = color;
+            // Play note
+            HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+            HAL_Delay(durations[i]);
+            
+            // Tiny 20ms gap to keep the rhythm crisp and punchy
+            HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+            HAL_Delay(20);
         }
     }
 }
 
 /**
-  * @brief Prints a string to the screen
+  * @brief Displays a startup splash screen for 5 seconds, then blacks out
   */
-void UI_DrawString(uint16_t x, uint16_t y, const char* str, uint16_t color) 
+void Startup_Splash_Screen(void)
+{
+    // 1. Wipe Layer 0 (SRAM) completely black
+    for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) {
+        fb[i] = L8_BLACK;
+    }
+
+    // 2. Expand Layer 1 to 350x295 for the XCalibur Logo
+    LTDC_LayerCfgTypeDef pLayerCfg1 = {0};
+    uint16_t splash_x = (LCD_WIDTH / 2) - (SPLASH_WIDTH / 2)+50;
+    uint16_t splash_y = (LCD_HEIGHT / 2) - (SPLASH_HEIGHT / 2);
+
+    pLayerCfg1.WindowX0      = splash_x; 
+    pLayerCfg1.WindowX1      = splash_x + SPLASH_WIDTH - 1; 
+    pLayerCfg1.WindowY0      = splash_y;                         
+    pLayerCfg1.WindowY1      = splash_y + SPLASH_HEIGHT - 1;            
+    pLayerCfg1.PixelFormat   = LTDC_PIXEL_FORMAT_RGB565; 
+    pLayerCfg1.FBStartAdress = (uint32_t)xcalibur_image; 
+    pLayerCfg1.ImageWidth    = SPLASH_WIDTH; 
+    pLayerCfg1.ImageHeight   = SPLASH_HEIGHT; 
+    pLayerCfg1.Alpha         = 255; 
+    pLayerCfg1.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA; 
+    pLayerCfg1.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+    
+    HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg1, 1);
+    HAL_LTDC_ConfigColorKeying(&hltdc, 0x000000, 1);
+    HAL_LTDC_EnableColorKeying(&hltdc, 1);
+
+    // 3. Force hardware to draw the splash screen
+    HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+
+    // 4. Play the musical hardware PWM tune! 
+    Play_Startup_Tune();
+    
+    // 5. Wait for the remaining time (make the splash last 4 seconds total)
+    HAL_Delay(3000);
+    
+    // 6. BLACKOUT: Disable Layer 1 to hide the image instantly
+    __HAL_LTDC_LAYER_DISABLE(&hltdc, 1);
+    HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+    
+    // 7. Hold the blackout for half a second 
+    HAL_Delay(500);
+    
+    // 8. Re-enable Layer 1 so the normal UI can use it again
+    __HAL_LTDC_LAYER_ENABLE(&hltdc, 1);
+}
+
+/**
+  * @brief Updates the dynamic text, arrows, and image!
+  */
+void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_array, uint8_t text_size)
+{
+    // 1. HANDLE LAYER 1 (THE IMAGE)
+    if (image_array != NULL) {
+        LTDC_LayerCfgTypeDef pLayerCfg1 = {0};
+        uint16_t center_x = (LCD_WIDTH / 2) - (IMAGE_WIDTH / 2);  
+        uint16_t center_y = (LCD_HEIGHT / 2) - (IMAGE_HEIGHT / 2); 
+
+        pLayerCfg1.WindowX0      = center_x; 
+        pLayerCfg1.WindowX1      = center_x + IMAGE_WIDTH - 1; 
+        pLayerCfg1.WindowY0      = center_y;                         
+        pLayerCfg1.WindowY1      = center_y + IMAGE_HEIGHT - 1;            
+        pLayerCfg1.PixelFormat   = LTDC_PIXEL_FORMAT_RGB565; 
+        pLayerCfg1.FBStartAdress = (uint32_t)image_array; 
+        pLayerCfg1.ImageWidth    = IMAGE_WIDTH; 
+        pLayerCfg1.ImageHeight   = IMAGE_HEIGHT; 
+        pLayerCfg1.Alpha         = 255; 
+        pLayerCfg1.BlendingFactor1 = LTDC_BLENDING_FACTOR1_PAxCA; 
+        pLayerCfg1.BlendingFactor2 = LTDC_BLENDING_FACTOR2_PAxCA;
+
+        HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg1, 1);
+        HAL_LTDC_ConfigColorKeying(&hltdc, 0x000000, 1);
+        HAL_LTDC_EnableColorKeying(&hltdc, 1);
+        
+        // Re-enable the layer just in case it was turned off previously!
+        __HAL_LTDC_LAYER_ENABLE(&hltdc, 1); 
+    } else {
+        // If NULL is passed, actively turn off Layer 1 so the image disappears
+        __HAL_LTDC_LAYER_DISABLE(&hltdc, 1);
+    }
+
+    // 2. WIPE THE OLD TEXT CLEAN
+    L8_FillRect(0, 520, UI_WIDTH, 40, L8_BLACK);
+
+    // 3. WIPE THE OLD ARROWS CLEAN
+    L8_FillRect(0, 380, UI_WIDTH, 40, L8_BLACK);
+
+    // 4. ALWAYS DRAW THE NEW TEXT (Even if arrows are hidden)
+    uint16_t text_width = strlen(title) * 18;
+    uint16_t start_x = (UI_WIDTH > text_width) ? (UI_WIDTH - text_width) / 2 : 5;
+    L8_DrawString(start_x, 530, title, L8_WHITE, text_size);
+
+    // 5. DRAW ARROWS ONLY IF SHOW_UI IS 1
+    if (show_ui) {
+        // Draw Left Arrow (<---)
+        uint16_t left_tip_x = 60, left_tip_y = 400;
+        L8_FillRect(left_tip_x, left_tip_y - 2, 45, 4, L8_WHITE); 
+        for (int i=0; i < 18; i++) { 
+            L8_DrawPixel(left_tip_x + i, left_tip_y - i, L8_WHITE); 
+            L8_DrawPixel(left_tip_x + i, left_tip_y - i - 1, L8_WHITE); 
+            L8_DrawPixel(left_tip_x + i, left_tip_y + i, L8_WHITE); 
+            L8_DrawPixel(left_tip_x + i, left_tip_y + i + 1, L8_WHITE); 
+        }
+        
+        // Draw Right Arrow (--->)
+        uint16_t right_tip_x = 420, right_tip_y = 400;
+        L8_FillRect(right_tip_x - 45, right_tip_y - 2, 45, 4, L8_WHITE);
+        for (int i=0; i < 18; i++) { 
+            L8_DrawPixel(right_tip_x - i, right_tip_y - i, L8_WHITE); 
+            L8_DrawPixel(right_tip_x - i, right_tip_y - i - 1, L8_WHITE); 
+            L8_DrawPixel(right_tip_x - i, right_tip_y + i, L8_WHITE); 
+            L8_DrawPixel(right_tip_x - i, right_tip_y + i + 1, L8_WHITE); 
+        }
+    }
+}
+
+/**
+  * @brief Static Framework (Layer 0 memory)
+  */
+void GUI_Framework(void)
+{
+  for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) {
+      fb[i] = L8_BLACK;
+  }
+  
+  L8_FillRect(0, 0, UI_WIDTH, BANNER_HEIGHT, L8_BLUE);
+  L8_DrawString(60, 28, "XCALIBUR ARES", L8_WHITE, 3);
+}
+
+/**
+  * @brief Prints a string using full ASCII table
+  * @param scale: size multiplier
+  */
+void L8_DrawString(uint16_t x, uint16_t y, const char* str, uint8_t colorIndex, uint8_t scale) 
 {
     while (*str) {
-        uint8_t glyph = 0;
         char c = *str;
         
-        if (c == ' ') glyph = 0;
-        else if (c == 'X') glyph = 1;
-        else if (c == 'C') glyph = 2;
-        else if (c == 'A') glyph = 3;
-        else if (c == 'L') glyph = 4;
-        else if (c == 'I') glyph = 5;
-        else if (c == 'B') glyph = 6;
-        else if (c == 'U') glyph = 7;
-        else if (c == 'R') glyph = 8;
-        else if (c == 'E') glyph = 9;
-        else if (c == 'S') glyph = 10;
+        if (c < 32 || c > 126) {
+            c = '?';
+        }
+
+        uint8_t glyph_index = c - 32;
 
         for (int i = 0; i < 8; i++) {
-            uint8_t row = font8x8_ares[glyph * 8 + i];
+            uint8_t row = font8x8_ascii[glyph_index][i];
             for (int j = 0; j < 8; j++) {
                 if (row & (0x80 >> j)) {
-                    // Draw 3x3 pixel blocks to scale up the text
-                    UI_FillRect(x + (j * 3), y + (i * 3), 3, 3, color);
+                    L8_FillRect(x + (j * scale), y + (i * scale), scale, scale, colorIndex);
                 }
             }
         }
-        x += 30; // Move right for next letter
+        x += (8 * scale) + 2; 
         str++;
     }
 }
 
 /**
-  * @brief Make general framework for gui
+  * @brief MPU Configuration to allow direct SRAM access for drawing
   */
-void GUI_Framework(void)
+void MPU_Config(void)
 {
-  // 1. Fill the entire 80x480 internal buffer with Blue
-  for (uint32_t i = 0; i < (UI_WIDTH * BANNER_HEIGHT); i++)
-  {
-      fb[i] = COLOR_BLUE;
-  }
+    MPU_Region_InitTypeDef MPU_InitStruct = {0};
+    HAL_MPU_Disable();
 
-  // 2. Draw Title Text inside the portrait blue bar
-  // Center roughly: X = 45, Y = 28
-  UI_DrawString(45, 28, "XCALIBUR ARES", COLOR_WHITE);
+    MPU_InitStruct.Enable = MPU_REGION_ENABLE;
+    MPU_InitStruct.BaseAddress = INTERNAL_FB_ADDRESS; 
+    MPU_InitStruct.Size = MPU_REGION_SIZE_512KB;
+    MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+    MPU_InitStruct.IsBufferable = MPU_ACCESS_NOT_BUFFERABLE;
+    MPU_InitStruct.IsCacheable = MPU_ACCESS_NOT_CACHEABLE;
+    MPU_InitStruct.IsShareable = MPU_ACCESS_NOT_SHAREABLE;
+    MPU_InitStruct.Number = MPU_REGION_NUMBER0;
+    MPU_InitStruct.TypeExtField = MPU_TEX_LEVEL1;
+    MPU_InitStruct.SubRegionDisable = 0x00;
+    MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
+    HAL_MPU_ConfigRegion(&MPU_InitStruct);
 
-  // 3. Push the pixels from the CPU Cache to our internal SRAM
-  SCB_CleanDCache_by_Addr((uint32_t*)fb, (UI_WIDTH * BANNER_HEIGHT * 2));
+    HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+}
+
+void L8_DrawPixel(uint16_t x, uint16_t y, uint8_t colorIndex)
+{
+    if (x >= UI_WIDTH || y >= UI_HEIGHT) return;
+
+    // Rotate coordinates to map logical portrait UI to physical landscape glass
+    uint16_t phys_x = y;
+    uint16_t phys_y = (LCD_HEIGHT - 1) - x;
+
+    fb[phys_y * LCD_WIDTH + phys_x] = colorIndex;
+}
+
+void L8_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t colorIndex)
+{
+    for (uint16_t i = 0; i < h; i++) {
+        for (uint16_t j = 0; j < w; j++) {
+            L8_DrawPixel(x + j, y + i, colorIndex);
+        }
+    }
 }
 
 /**
@@ -271,12 +717,9 @@ static void MX_LTDC_Init(void)
   hltdc.Init.TotalWidth = 928;
   hltdc.Init.TotalHeigh = 525;
   
-  // ---------------------------------------------------------
-  // Let the hardware paint the background White for us
   hltdc.Init.Backcolor.Blue = 0;
   hltdc.Init.Backcolor.Green = 0;
   hltdc.Init.Backcolor.Red = 0;
-  // ---------------------------------------------------------
   
   if (HAL_LTDC_Init(&hltdc) != HAL_OK)
   {
@@ -292,29 +735,34 @@ void LCD_InitLayer(void)
     LTDC_LayerCfgTypeDef pLayerCfg = {0};
 
     // ---------------------------------------------------------
-    // MATH UPDATE: Move our small 80-pixel layer to the physical LEFT edge of the LCD.
-    // When you rotate the device 180 degrees from before (Ribbon at Top), 
-    // this becomes your TOP banner!
-    pLayerCfg.WindowX0      = 0; 
-    pLayerCfg.WindowX1      = BANNER_HEIGHT - 1;         // 79
-    pLayerCfg.WindowY0      = 0;                         
-    pLayerCfg.WindowY1      = LCD_HEIGHT - 1;            // 479
-    
-    pLayerCfg.PixelFormat   = LTDC_PIXEL_FORMAT_RGB565; 
-    pLayerCfg.FBStartAdress = INTERNAL_FB_ADDRESS; 
-    
-    pLayerCfg.ImageWidth    = BANNER_HEIGHT; 
-    pLayerCfg.ImageHeight   = LCD_HEIGHT; 
+    // LAYER 0: Framework, Arrows, Texts (L8 Mode)
     // ---------------------------------------------------------
+    pLayerCfg.WindowX0      = 0; 
+    pLayerCfg.WindowX1      = LCD_WIDTH - 1; 
+    pLayerCfg.WindowY0      = 0;                         
+    pLayerCfg.WindowY1      = LCD_HEIGHT - 1;
     
-    pLayerCfg.Alpha         = 255;          /* opaque */
-    pLayerCfg.Backcolor.Blue  = 0;
-    pLayerCfg.Backcolor.Green = 0;
-    pLayerCfg.Backcolor.Red   = 0;
+    pLayerCfg.PixelFormat   = LTDC_PIXEL_FORMAT_L8; 
+    pLayerCfg.FBStartAdress = INTERNAL_FB_ADDRESS; 
+    pLayerCfg.ImageWidth    = LCD_WIDTH; 
+    pLayerCfg.ImageHeight   = LCD_HEIGHT; 
+    pLayerCfg.Alpha         = 255;          
+    
+    pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_CA;
+    pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_CA;
 
-    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg, 0) != HAL_OK) {
+    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg, 0) != HAL_OK) { 
         Error_Handler();
     }
+
+    // --- CONFIGURE COLOR PALETTE FOR LAYER 0 ---
+    static uint32_t Layer0_CLUT[3];
+    Layer0_CLUT[L8_BLACK] = 0xFF000000; // Black 
+    Layer0_CLUT[L8_BLUE]  = 0xFF34BFFF; // Blue Banner 
+    Layer0_CLUT[L8_WHITE] = 0xFFFFFFFF; // White Text/Arrows
+
+    HAL_LTDC_ConfigCLUT(&hltdc, Layer0_CLUT, 3, 0); 
+    HAL_LTDC_EnableCLUT(&hltdc, 0);                 
 }
 
 /**
@@ -355,14 +803,12 @@ static void MX_SPI1_Init(void)
   */
 static void MX_TIM4_Init(void)
 {
-  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 0;
+  htim4.Init.Prescaler = 199; // Set for 1MHz timer tick (assuming 200MHz APB)
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 65535;
+  htim4.Init.Period = 249;    // Gives us roughly 4kHz default
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
@@ -370,18 +816,6 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
-  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
-  if (HAL_TIM_SlaveConfigSynchro(&htim4, &sSlaveConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
@@ -393,7 +827,23 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
-  HAL_TIM_MspPostInit(&htim4);
+
+  /* --- MANUALLY ROUTE TIM4_CH1 TO PD12 --- */
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  
+  // 1. Ensure Port D clock is running
+  __HAL_RCC_GPIOD_CLK_ENABLE(); 
+  
+  // 2. Configure PD12 as Alternate Function Push-Pull
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP; 
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  
+  // 3. The Magic Key: Connects this specific pin to TIM4!
+  GPIO_InitStruct.Alternate = GPIO_AF2_TIM4; 
+  
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 }
 
 /**
@@ -405,17 +855,13 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
-  __HAL_RCC_GPIOF_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE(); // Crucial for PD12 (TIM4) to function!
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, RED_LED_Pin|GREEN_LED_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(UP_BTTN_GPIO_Port, UP_BTTN_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(DISP_GPIO_Port, DISP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : RED_LED_Pin GREEN_LED_Pin */
@@ -425,18 +871,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SELECT_BTTN_Pin RIGHT_BTTN_Pin LEFT_BTTN_Pin DOWN_BTTN_Pin */
-  GPIO_InitStruct.Pin = SELECT_BTTN_Pin|RIGHT_BTTN_Pin|LEFT_BTTN_Pin|DOWN_BTTN_Pin;
+/* Configure GPIO pins on Port B: SELECT, DOWN, UP, LEFT */
+  GPIO_InitStruct.Pin = SELECT_BTTN_Pin | DOWN_BTTN_Pin | UP_BTTN_Pin | LEFT_BTTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL; // Let your external 10k resistors do the work!
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : UP_BTTN_Pin */
-  GPIO_InitStruct.Pin = UP_BTTN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /* Configure GPIO pin on Port D: RIGHT */
+  GPIO_InitStruct.Pin = RIGHT_BTTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(UP_BTTN_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(RIGHT_BTTN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DISP_Pin */
   GPIO_InitStruct.Pin = DISP_Pin;
@@ -456,13 +901,6 @@ void Error_Handler(void)
   {
       HAL_GPIO_TogglePin(RED_LED_GPIO_Port, RED_LED_Pin);
       HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-      
       for(volatile uint32_t i = 0; i < 20000000; i++) {} 
   }
 }
-
-#ifdef  USE_FULL_ASSERT
-void assert_failed(uint8_t *file, uint32_t line)
-{
-}
-#endif /* USE_FULL_ASSERT */
