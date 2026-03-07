@@ -375,24 +375,16 @@ uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
   * @brief Plays a musical 4-note arpeggio (C-Major) using PWM
   */
 void Play_Startup_Tune(void)
-{
-    // The intro relies on deep-house piano chords. 
-    // We use the highest notes of the chords to recreate the exact 
-    // syncopated, upbeat rhythm!
-    //
-    // Frequencies mapped to a 1MHz timer ARR:
-    // C5 = 1912, Bb4 = 2145, Ab4 = 2409, 0 = Rest (Silence)
-    
+{   
     uint16_t notes[] = {
-        1912, 0,    // Beat 1 hit (C5)
-        1912, 0,    // Syncopated off-beat hit (C5)
-        2145, 0,    // Beat 4 hit (Bb4)
-        2409, 0,    // Next measure Beat 1 (Ab4)
-        2409, 0,    // Syncopated off-beat hit (Ab4)
-        2145        // Beat 4 hit (Bb4)
+        1912, 0,    
+        1912, 0,    
+        2145, 0,    
+        2409, 0,    
+        2409, 0,    
+        2145        
     };
     
-    // Durations to match the ~122 BPM house groove (~3 seconds total)
     uint16_t durations[] = {
         250, 240, 
         200, 360, 
@@ -408,7 +400,6 @@ void Play_Startup_Tune(void)
         uint16_t current_arr = notes[i];
         
         if (current_arr == 0) {
-            // It is a musical rest (Silence)
             HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
             HAL_Delay(durations[i]);
         } else {
