@@ -10,6 +10,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stdio.h"
+#include "stm32h7xx_hal_gpio.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -248,6 +249,8 @@ while (1)
       switch (current_ui_state) 
       {
           case STATE_KNIFE_SELECTION:
+              HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_RESET);
+              HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
               // ---------------------------------------------------
               // SUB-FSM: KNIFE SCROLLING
               // ---------------------------------------------------
@@ -276,6 +279,7 @@ while (1)
                   // 1. Send SPI Packet
                   //SPI_Send_Tool_Selection(current_knife);
                   //TODO: Implement SPI
+                  //Blink green led
                   
                   // 2. Change Screen
                   Update_Tool_UI(0, "Please Enter Knife", josh_image, 2); // Pass NULL to hide image, 0 to hide arrows
@@ -287,6 +291,13 @@ while (1)
               break;
 
           case STATE_INSERTION:
+              while (1){ //TODO: This needs to be a poll
+                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
+                HAL_Delay (200);
+                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
+                HAL_Delay (200);
+              }
+
               // Poll main board until it says the knife is detected
               /*if (SPI_Poll_Main_Board() == 1) { // Assuming 1 = Knife Found
                   Update_Tool_UI(0, "Let go of knife!", NULL);
@@ -299,8 +310,13 @@ while (1)
               break;
 
           case STATE_TOOL_LET_GO:
-              // Block for 3 seconds to let the user back away safely
-              HAL_Delay(3000); 
+              // Block for 4 seconds to let the user back away safely
+              for (int i = 0; i < 10; i++) {
+                HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
+                HAL_Delay (200);
+                HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_RESET);
+                HAL_Delay (200);
+              }
               
               // The main board operates the clamp now. Change UI to sharpening.
               Update_Tool_UI(0, "Sharpening in progress...", NULL, 2);
@@ -310,6 +326,8 @@ while (1)
               break;
 
           case STATE_SHARPENING:
+              HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
+              HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
               // Poll main board until sharpening is completely finished
               /*if (SPI_Poll_Main_Board() == 2) { // Assuming 2 = Sharpening Done
                   
@@ -325,6 +343,12 @@ while (1)
               break;
 
           case STATE_DONE_REMOVE:
+              while (1){ //TODO: This needs to be a poll
+                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
+                HAL_Delay (200);
+                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
+                HAL_Delay (200);
+              }
               // Poll main board to check if the user physically pulled it out
               /*if (SPI_Poll_Main_Board() == 3) { // Assuming 3 = Knife Removed
                   
@@ -852,7 +876,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE(); // Crucial for PD12 (TIM4) to function!
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, RED_LED_Pin|GREEN_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(DISP_GPIO_Port, DISP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : RED_LED_Pin GREEN_LED_Pin */
