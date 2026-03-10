@@ -26,7 +26,7 @@
 
 // Splash Logo Dimensions
 #define SPLASH_WIDTH  400
-#define SPLASH_HEIGHT 475
+#define SPLASH_HEIGHT 427
 
 // Link to your image data in the other files. 
 extern const uint8_t chef_knife_image[]; 
@@ -34,7 +34,24 @@ extern const uint8_t paring_knife_image[];
 extern const uint8_t gyuto_knife_image[]; 
 extern const uint8_t utility_knife_image[]; 
 extern const uint8_t xcalibur_image[]; 
-extern const uint8_t josh_image[]; 
+extern const uint8_t sharpening_frame0[];
+extern const uint8_t sharpening_frame1[];
+extern const uint8_t sharpening_frame2[];
+extern const uint8_t sharpening_frame3[];
+extern const uint8_t sharpening_frame4[];
+extern const uint8_t sharpening_frame5[];
+extern const uint8_t hands_off_image[];
+extern const uint8_t knife_insert_image[];
+extern const uint8_t xcalibur_green_image[];
+
+const uint8_t *sharpening_frames[] = {
+    sharpening_frame0,
+    sharpening_frame1,
+    sharpening_frame2,
+    sharpening_frame3,
+    sharpening_frame4,
+    sharpening_frame5
+};
 
 /* --- Vertical UI Settings --- */
 #define UI_WIDTH    480
@@ -77,7 +94,7 @@ typedef enum {
 } KnifeType_t;
 
 // Initialize our starting states
-UI_State_t current_ui_state = STATE_KNIFE_SELECTION;
+UI_State_t current_ui_state = STATE_SHARPENING;
 KnifeType_t current_knife = CHEF_KNIFE;
 
 /* Private variables ---------------------------------------------------------*/
@@ -289,7 +306,7 @@ while (1)
                   //Blink green led
                   
                   // 2. Change Screen
-                  Update_Tool_UI(0, "Please Enter Knife", josh_image, 2); // Pass NULL to hide image, 0 to hide arrows
+                  Update_Tool_UI(0, "Please Enter Knife", knife_insert_image, 2); // Pass NULL to hide image, 0 to hide arrows
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
                   // 3. Advance Main FSM
@@ -306,7 +323,7 @@ while (1)
                     HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
                     HAL_Delay (200);
               } 
-              Update_Tool_UI(0, "Let go of knife!", NULL, 2);
+              Update_Tool_UI(0, "Let go of knife!", hands_off_image, 2);
               HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
               // Advance FSM
@@ -323,8 +340,11 @@ while (1)
               }
               
               // The main board operates the clamp now. Change UI to sharpening.
-              Update_Tool_UI(0, "Sharpening in progress...", NULL, 2);
-              HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              for (int i = 0; i <= 5; i++) {
+                  Update_Tool_UI(0, "Sharpening in progress...", sharpening_frames[i], 2);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  HAL_Delay(100);
+              }
               
               current_ui_state = STATE_SHARPENING;
               break;
@@ -332,12 +352,18 @@ while (1)
           case STATE_SHARPENING:
               HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
               HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
+
+              for (int i = 0; i <= 5; i++) {
+                  Update_Tool_UI(0, "Sharpening in progress...", sharpening_frames[i], 2);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  HAL_Delay(100);
+              }
               // Poll main board until sharpening is completely finished
               if (SPI_Poll_Main_Board() == 2) { // 2 = Sharpening Done
                   // Play success chime!
                   Play_Startup_Tune(); 
                   
-                  Update_Tool_UI(0, "Knife sharpened! Remove knife.", NULL, 2);
+                  Update_Tool_UI(0, "Knife sharpened! Remove knife.", xcalibur_green_image, 2);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
                   current_ui_state = STATE_DONE_REMOVE;

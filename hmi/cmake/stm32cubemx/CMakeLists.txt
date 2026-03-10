@@ -28,8 +28,16 @@ set(MX_Application_Src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/gyuto_knife_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/paring_knife_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/utility_knife_image.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/josh_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/xcalibur_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame0.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame1.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame2.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame3.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame4.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/frame5.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/hands_off_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/knife_insert_image.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../Core/Src/xcalibur_green_image.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../../startup_stm32h743xx.s
 )
 
