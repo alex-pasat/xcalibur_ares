@@ -11,6 +11,7 @@
 #include "main.h"
 #include "stdio.h"
 #include "stm32h7xx_hal_gpio.h"
+#include "stm32h7xx_hal_spi.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -39,6 +40,11 @@ extern const uint8_t josh_image[];
 #define UI_WIDTH    480
 #define UI_HEIGHT   800
 #define BANNER_HEIGHT 80
+
+/* SPI Commands*/
+#define SPI_CMD_SEND_KNIFE    0x10  
+#define SPI_CMD_POLL_STATUS   0x20  
+#define SPI_DUMMY_BYTE        0xFF  
 
 /* Using the STM32H7's Internal AXI SRAM */
 #define INTERNAL_FB_ADDRESS  0x24000000UL  
@@ -196,6 +202,8 @@ void L8_DrawPixel(uint16_t x, uint16_t y, uint8_t colorIndex);
 void Startup_Splash_Screen(void);
 void Play_Startup_Tune(void);
 uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
+void SPI_Send_Tool_Selection(KnifeType_t knife);
+uint8_t SPI_Poll_Main_Board(void);
 
 /**
   * @brief  The application entry point.
@@ -277,8 +285,7 @@ while (1)
               // ---------------------------------------------------
               else if (Button_Pressed(SELECT_BTTN_GPIO_Port, SELECT_BTTN_Pin)) {
                   // 1. Send SPI Packet
-                  //SPI_Send_Tool_Selection(current_knife);
-                  //TODO: Implement SPI
+                  SPI_Send_Tool_Selection(current_knife);
                   //Blink green led
                   
                   // 2. Change Screen
@@ -291,22 +298,19 @@ while (1)
               break;
 
           case STATE_INSERTION:
-              while (1){ //TODO: This needs to be a poll
-                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
-                HAL_Delay (200);
-                HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
-                HAL_Delay (200);
-              }
-
               // Poll main board until it says the knife is detected
-              /*if (SPI_Poll_Main_Board() == 1) { // Assuming 1 = Knife Found
-                  Update_Tool_UI(0, "Let go of knife!", NULL);
-                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              while (SPI_Poll_Main_Board() != 1) { // 1 = Knife Found
+                    // Blink Green LED while waiting for knife insertion
+                    HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
+                    HAL_Delay (200);
+                    HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
+                    HAL_Delay (200);
+              } 
+              Update_Tool_UI(0, "Let go of knife!", NULL, 2);
+              HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
-                  // Advance FSM
-                  current_ui_state = STATE_TOOL_LET_GO;
-              }*/ 
-              //TODO: Implement SPI here too
+              // Advance FSM
+              current_ui_state = STATE_TOOL_LET_GO;
               break;
 
           case STATE_TOOL_LET_GO:
@@ -329,45 +333,56 @@ while (1)
               HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
               HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
               // Poll main board until sharpening is completely finished
-              /*if (SPI_Poll_Main_Board() == 2) { // Assuming 2 = Sharpening Done
-                  
+              if (SPI_Poll_Main_Board() == 2) { // 2 = Sharpening Done
                   // Play success chime!
                   Play_Startup_Tune(); 
                   
-                  Update_Tool_UI(0, "Knife sharpened! Remove knife.", NULL);
+                  Update_Tool_UI(0, "Knife sharpened! Remove knife.", NULL, 2);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
                   current_ui_state = STATE_DONE_REMOVE;
-              }*/
-              //TODO: Implement SPI here too
+              }
               break;
 
           case STATE_DONE_REMOVE:
-              while (1){ //TODO: This needs to be a poll
                 HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
                 HAL_Delay (200);
                 HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
                 HAL_Delay (200);
-              }
               // Poll main board to check if the user physically pulled it out
-              /*if (SPI_Poll_Main_Board() == 3) { // Assuming 3 = Knife Removed
-                  
+              if (SPI_Poll_Main_Board() == 3) { // 3 = Knife Removed
                   // Redraw the specific knife they were just looking at
                   switch(current_knife) {
-                      case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image); break;
-                      case PARING_KNIFE: Update_Tool_UI(1, "Paring Knife", paring_knife_image); break;
-                      case GYUTO_KNIFE: Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image); break;
-                      case JAPANESE_UTILITY_KNIFE: Update_Tool_UI(1, "Japanese Utility", utility_knife_image); break;
+                      case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image,2); break;
+                      case PARING_KNIFE: Update_Tool_UI(1, "Paring Knife", paring_knife_image,2); break;
+                      case GYUTO_KNIFE: Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image,2); break;
+                      case JAPANESE_UTILITY_KNIFE: Update_Tool_UI(1, "Japanese Utility", utility_knife_image,2); break;
                   }
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   
-                  // Loop back to the very beginning!
                   current_ui_state = STATE_KNIFE_SELECTION;
-                  //TODO: Implement SPI here too
-              }*/
+              }
               break;
       }
   }
+}
+
+void SPI_Send_Tool_Selection(KnifeType_t knife){
+  uint8_t tx_buffer[2];
+  tx_buffer[0] = SPI_CMD_SEND_KNIFE; // Start Byte
+  tx_buffer[1] = (uint8_t)knife; // Knife Type
+
+  //one sided communication, no rx buffer needed
+  HAL_SPI_Transmit(&hspi1, tx_buffer, sizeof(tx_buffer), HAL_MAX_DELAY);
+}
+
+uint8_t SPI_Poll_Main_Board(void){
+  uint8_t tx_buffer[1] = {SPI_CMD_POLL_STATUS}; // Command to ask main board for status update
+  HAL_SPI_Transmit(&hspi1, tx_buffer, sizeof(tx_buffer), 100);
+  uint8_t rx_buffer[1];
+  for(volatile int i = 0; i < 500; i++) {} //DELAY FOR PROCESSING
+  HAL_SPI_Receive(&hspi1, rx_buffer, sizeof(rx_buffer), 100);
+  return rx_buffer[0]; // Return the status byte received from the main board
 }
 
 /**
