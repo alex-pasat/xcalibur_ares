@@ -25,8 +25,12 @@ void Encoder_Init(enc_config_t *enc) {
     enc->velocity_rps = 0.0f;
 }
 
-float Encoder_ComputeVelocity(enc_config_t *enc, int32_t delta_ticks, float dt_s) {
-    enc->velocity_rps = ((float)delta_ticks / enc->counts_per_rev) / dt_s;
+float Encoder_ComputeVelocity(enc_config_t *enc, float dt_s) {
+    __disable_irq();
+    int32_t delta_ticks = enc->count - enc->prev_count;
+    enc->prev_count = enc->count;
+    __enable_irq();
+    enc->velocity_rps = ((float)delta_ticks / (float)enc->counts_per_rev) / dt_s;
     return enc->velocity_rps;
 }
 
@@ -39,6 +43,7 @@ float Encoder_GetAngleDeg(const enc_config_t *enc) {
 void Encoder_Reset(enc_config_t *enc) {
     enc->count      = 0;
     enc->last_state = 0;
+    enc->prev_count = 0;
 }
 
 

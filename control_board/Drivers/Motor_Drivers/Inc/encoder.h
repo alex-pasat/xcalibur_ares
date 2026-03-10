@@ -24,6 +24,7 @@ typedef struct {
   // -- State --
   enc_ab_state_t last_state; // Last AB state, used to determine direction
   int32_t count;             // Absolute position in ticks
+  int32_t prev_count;        // Previous count, used for velocity calculation
   uint32_t counts_per_rev;   // Encoder resolution (ticks per revolution)
 
   float velocity_rps; // Current velocity in revolutions per second
@@ -32,8 +33,7 @@ typedef struct {
 // -- FUNCTION PROTOTYPES -----------------------------------------------------
 void Encoder_Init(enc_config_t *enc);
 
-float Encoder_ComputeVelocity(enc_config_t *enc, int32_t delta_ticks,
-                              float dt_s);
+float Encoder_ComputeVelocity(enc_config_t *enc, float dt_s);
 
 float Encoder_GetAngleDeg(const enc_config_t *enc);
 

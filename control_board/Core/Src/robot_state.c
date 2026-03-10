@@ -5,8 +5,11 @@
 
 #include "robot_state.h"
 #include "drv88xx.h"
+#include "robot_control.h"
 #include "tiny_hsm.h"
 #include "tiny_ring_buffer.h"
+#include "robot_control.h"
+#include "robot_config.h"
 
 #include <string.h>
 
@@ -109,7 +112,11 @@ static tiny_hsm_result_t state_idle(tiny_hsm_t *hsm, tiny_hsm_signal_t signal,
   switch (signal) {
   case tiny_hsm_signal_entry:
     // immediately wait for user input on SPI 
-    tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_receiving_spi);
+    // tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_receiving_spi);
+    // TODO: put test code here
+    MotorCtrl_Enable(&dc_pitch);
+    MotorCtrl_SetTarget(&dc_pitch, 1);
+
     return tiny_hsm_result_signal_consumed;
 
   case tiny_hsm_signal_exit:

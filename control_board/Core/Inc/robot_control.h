@@ -34,9 +34,14 @@ typedef struct {
   // so we can home the motor to a known position on startup.
   // When the hall sensor is triggered, we will reset the encoder count to 0
 
+  GPIO_TypeDef *adc_port; // Optional ADC port for current sensing
+  uint32_t adc_pin;   // Optional ADC pin
+  uint8_t shunt_resistor_mohm; // Shunt resistor value in milliohms for current calculation
+
   float target_rps; // Desired speed (rev/s)
   float dt;         // Control loop period (seconds)
   bool enabled;
+  
 } motor_ctrl_t;
 
 void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,

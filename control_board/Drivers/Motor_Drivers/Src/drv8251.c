@@ -41,20 +41,22 @@ void DRV8251_SetSpeed(drv8251_config_t *config, float speed) {
         DRV8251_Coast(config);
         return;
     } 
+
+    uint32_t autoreload = config->tim_autoreload;
     
     if (speed > 0.0f) {
-        // Forward
+        // Forward: set IN1 to 100% duty cycle and IN2 duty cycle based on speed
         __HAL_TIM_SET_COMPARE(config->in1_tim, config->in1_tim_channel,
-            (uint32_t)(duty * config->tim_autoreload));
+            autoreload); // IN1=1 (100% duty cycle)
         __HAL_TIM_SET_COMPARE(config->in2_tim, config->in2_tim_channel,
-            config->tim_autoreload);
+            autoreload*(1.0f - duty)); // IN2=PWM
         config->state = DRV8251_STATE_FORWARD;
     } else {
-        // Reverse
+        // Reverse: set IN2 to 100% duty cycle and IN1 duty cycle based on speed
         __HAL_TIM_SET_COMPARE(config->in1_tim, config->in1_tim_channel,
-            config->tim_autoreload);
+            autoreload*(1.0f - duty)); // IN1=PWM
         __HAL_TIM_SET_COMPARE(config->in2_tim, config->in2_tim_channel,
-            (uint32_t)(duty * config->tim_autoreload));
+            autoreload); // IN2=1 (100% duty cycle)
         config->state = DRV8251_STATE_REVERSE;
     }
 }

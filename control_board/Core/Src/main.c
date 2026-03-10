@@ -25,9 +25,12 @@
 // standard library
 
 // MOTOR CONTROL
+#include "drv8251.h"
+#include "qpid.h"
 #include "robot_config.h"
 
 // STATE MACHINE
+#include "robot_control.h"
 #include "robot_state.h"
 
 /* USER CODE END Includes */
@@ -104,9 +107,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     case PITCH_ENC_B_Pin:
       Encoder_EXTI_Callback(dc_pitch.enc);
       break;
-    case SCLAMP1_ENC_A_Pin:
-    case SCLAMP1_ENC_B_Pin:
+    case ROLL_ENC_A_Pin:
+    case ROLL_ENC_B_Pin:
       Encoder_EXTI_Callback(dc_roll.enc);
+      break;
+    case KNIFECLAMP_ENC_A_Pin:
+    case KNIFECLAMP_ENC_B_Pin:
+      Encoder_EXTI_Callback(clamp.enc);
       break;
   }
 
@@ -162,6 +169,7 @@ int main(void)
 
   RobotState_Init();
 
+  DRV8251_SetSpeed(dc_pitch.drv, 1.0f);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -169,10 +177,15 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
+    // if (qPID_AutoTuningComplete(&dc_roll.pid)) {
+    //   qPID_BindAutoTuning(&dc_roll.pid, NULL);
+    // }
 
-    // TODO: call periodic function here or from timer interrupt
-
+    // // TODO: call periodic function here or from timer interrupt
+    // MotorCtrl_Update(&dc_pitch);
+    // HAL_Delay(10); // delay for 10 ms
   }
   /* USER CODE END 3 */
 }
@@ -404,10 +417,6 @@ static void MX_TIM1_Init(void)
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_OC_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -419,18 +428,17 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_OC_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
@@ -487,10 +495,6 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_OC_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
@@ -505,12 +509,10 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
-  if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
@@ -1042,24 +1044,22 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : EXTRA_HALL_Pin ROLL_ENC_B_Pin ROLL_ENC_A_Pin TENSION_ENC_B_Pin
-                           TENSION_ENC_A_Pin */
-  GPIO_InitStruct.Pin = EXTRA_HALL_Pin|ROLL_ENC_B_Pin|ROLL_ENC_A_Pin|TENSION_ENC_B_Pin
-                          |TENSION_ENC_A_Pin;
+  /*Configure GPIO pin : EXTRA_HALL_Pin */
+  GPIO_InitStruct.Pin = EXTRA_HALL_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(EXTRA_HALL_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : KNIFECLAMP_ENC_B_Pin KNIFECLAMP_ENC_A_Pin YAW_ENC_B_Pin YAW_ENC_A_Pin
-                           SCLAMP2_ENC_B_Pin SCLAMP2_ENC_A_Pin */
+                           ROLL_ENC_B_Pin ROLL_ENC_A_Pin */
   GPIO_InitStruct.Pin = KNIFECLAMP_ENC_B_Pin|KNIFECLAMP_ENC_A_Pin|YAW_ENC_B_Pin|YAW_ENC_A_Pin
-                          |SCLAMP2_ENC_B_Pin|SCLAMP2_ENC_A_Pin;
+                          |ROLL_ENC_B_Pin|ROLL_ENC_A_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PITCH_ENC_B_Pin PITCH_ENC_A_Pin SCLAMP1_ENC_B_Pin SCLAMP1_ENC_A_Pin */
-  GPIO_InitStruct.Pin = PITCH_ENC_B_Pin|PITCH_ENC_A_Pin|SCLAMP1_ENC_B_Pin|SCLAMP1_ENC_A_Pin;
+  /*Configure GPIO pins : PITCH_ENC_B_Pin PITCH_ENC_A_Pin */
+  GPIO_InitStruct.Pin = PITCH_ENC_B_Pin|PITCH_ENC_A_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -1092,6 +1092,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 

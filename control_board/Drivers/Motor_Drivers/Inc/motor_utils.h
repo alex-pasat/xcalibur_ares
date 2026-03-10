@@ -9,5 +9,7 @@ typedef enum
     DIRECTION_CW = 1
 } motor_direction_e;
 
+// TODO
+uint16_t rps_to_rpm(float rps);
 
 #endif /* MOTOR_UTILS_H */

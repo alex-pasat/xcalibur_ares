@@ -41,6 +41,9 @@ typedef struct {
     TIM_HandleTypeDef *in2_tim;
     uint32_t in2_tim_channel;
 
+    uint32_t MIN_RPM;
+    uint32_t MAX_RPM;
+
     drv8251_state_t state; // current state of the motor
 
     // -- Speed: -1.0 (full reverse) to 1.0 (full forward) --

@@ -201,6 +201,21 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles EXTI line[9:5] interrupts.
+  */
+void EXTI9_5_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI9_5_IRQn 0 */
+
+  /* USER CODE END EXTI9_5_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(PITCH_ENC_B_Pin);
+  HAL_GPIO_EXTI_IRQHandler(PITCH_ENC_A_Pin);
+  /* USER CODE BEGIN EXTI9_5_IRQn 1 */
+
+  /* USER CODE END EXTI9_5_IRQn 1 */
+}
+
+/**
   * @brief This function handles I2C2 event interrupt / I2C2 wake-up interrupt through EXTI line 24.
   */
 void I2C2_EV_IRQHandler(void)
@@ -268,8 +283,8 @@ void EXTI15_10_IRQHandler(void)
   HAL_GPIO_EXTI_IRQHandler(KNIFECLAMP_ENC_A_Pin);
   HAL_GPIO_EXTI_IRQHandler(YAW_ENC_B_Pin);
   HAL_GPIO_EXTI_IRQHandler(YAW_ENC_A_Pin);
-  HAL_GPIO_EXTI_IRQHandler(SCLAMP2_ENC_B_Pin);
-  HAL_GPIO_EXTI_IRQHandler(SCLAMP2_ENC_A_Pin);
+  HAL_GPIO_EXTI_IRQHandler(ROLL_ENC_B_Pin);
+  HAL_GPIO_EXTI_IRQHandler(ROLL_ENC_A_Pin);
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
 
   /* USER CODE END EXTI15_10_IRQn 1 */
