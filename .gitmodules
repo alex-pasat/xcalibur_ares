@@ -1,0 +1,6 @@
+[submodule "control_board/lib/tiny"]
+	path = control_board/lib/tiny
+	url = https://github.com/ryanplusplus/tiny.git
+[submodule "control_board/lib/qlibs"]
+	path = control_board/lib/qlibs
+	url = https://github.com/kmilo17pet/qlibs.git

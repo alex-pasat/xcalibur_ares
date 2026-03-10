@@ -1,18 +1,15 @@
-#include "drv8825.h"
+#include "drv88xx.h"
 
 #include <math.h>
-#include <stdbool.h>
-#include <stdint.h>
-
 
 // Internal helper functions
 
-static uint32_t distTo(drv8825_config_t *config)
+static uint32_t distTo(drv88xx_config_t *config)
 {
     return config->target_pos - config->current_pos;
 }
 
-static float computeNewSpeed(drv8825_config_t *config)
+static float computeNewSpeed(drv88xx_config_t *config)
 {
     uint32_t dist_to = distTo(config);
     uint32_t steps_to_stop = (uint32_t)((config->speed * config->speed) / (2.0f * config->acceleration));
@@ -60,11 +57,14 @@ static float computeNewSpeed(drv8825_config_t *config)
         }
     }
 
-    if (config->n == 0) {
+    if (config->n == 0)
+    {
         // first step from stopped
         config->cn = config->c0;
         config->direction = (dist_to > 0) ? DIRECTION_CW : DIRECTION_CCW;
-    } else {
+    }
+    else
+    {
         // subsequent step, accelerate or decelerate
         config->cn = config->cn - ((2.0f * config->cn) / ((4.0f * config->n) + 1));
         config->cn = (config->cn < config->cmin) ? config->cmin : config->cn;
@@ -80,61 +80,47 @@ static float computeNewSpeed(drv8825_config_t *config)
 
 // Public API functions
 
-void DRV8825_Test(drv8825_config_t *config)
+void DRV88xx_Test(drv88xx_config_t *config)
 {
     // Step 100 steps in one direction
-    DRV8825_Move(config, 100);
-    while (DRV8825_Run(config)); // Wait until movement is complete
+    DRV88xx_Move(config, 100);
+    while (DRV88xx_Run(config))
+        ; // Wait until movement is complete
 
     // Delay for a bit
     HAL_Delay(1000);
 
     // Step 100 steps in the other direction
-    DRV8825_Move(config, -200);
-    while (DRV8825_Run(config)); // Wait until movement is complete{
-    
+    DRV88xx_Move(config, -200);
+    while (DRV88xx_Run(config))
+        ; // Wait until movement is complete{
 }
 
-void DRV8825_Init(drv8825_config_t *config,
-                  GPIO_TypeDef *step_port, uint32_t step_pin,
-                  GPIO_TypeDef *dir_port, uint32_t dir_pin,
-                  GPIO_TypeDef *en_port, uint32_t en_pin,
-                  GPIO_TypeDef *nfault_port,
-                  uint32_t nfault_pin)
+void DRV88xx_Init(drv88xx_config_t *config)
 {
-
-    config->step_port = step_port;
-    config->step_pin = step_pin;
-    config->dir_port = dir_port;
-    config->dir_pin = dir_pin;
-    config->en_port = en_port;
-    config->en_pin = en_pin;
-    config->nfault_port = nfault_port;
-    config->nfault_pin = nfault_pin;
-
     // Set default values
     config->current_pos = 0;
     config->target_pos = 0;
     config->speed = 0.0f;
-    config->max_speed = 0;
-    config->acceleration = 0;
     config->last_step_time = 0;
-    config->min_pulse_width = 1; // Minimum pulse width in microseconds
-    config->dir_inverted = false;
-    config->en_inverted = false;
 
     // Initialize GPIO pins
-    HAL_GPIO_WritePin(config->en_port, config->en_pin, GPIO_PIN_SET); // Disable motor by default
-    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, GPIO_PIN_RESET); // Default direction
+    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, GPIO_PIN_RESET);   // Default direction
     HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_RESET); // Ensure step pin is low
-    if (config->nfault_port != NULL)
-        HAL_GPIO_WritePin(config->nfault_port, config->nfault_pin, GPIO_PIN_RESET); // Clear fault pin if used
+    // disable the motor by default
+    if (config->en_port != NULL)
+        HAL_GPIO_WritePin(config->en_port, config->en_pin,
+            config->en_inverted ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-    DRV8825_SetAcceleration(config, 1.0f); // Set some reasonable default acceleration
-    DRV8825_SetMaxSpeed(config, 1000.0f); // Set some reasonable default max speed
+    if (config->max_speed <= 0.0f) config->max_speed = 1000.0f;
+    if (config->acceleration <= 0.0f) config->acceleration = 500.0f;
+
+    // Recompute accelerations constants based on max speed and acceleration
+    DRV88xx_SetAcceleration(config, config->acceleration);
+    DRV88xx_SetMaxSpeed(config, config->max_speed);
 }
 
-void DRV8825_SetCurrentPosition(drv8825_config_t *config, int32_t position)
+void DRV88xx_SetCurrentPosition(drv88xx_config_t *config, int32_t position)
 {
     config->current_pos = position;
     config->target_pos = position;
@@ -143,7 +129,7 @@ void DRV8825_SetCurrentPosition(drv8825_config_t *config, int32_t position)
     config->speed = 0.0f;
 }
 
-void DRV8825_SetSpeed(drv8825_config_t *config, float speed)
+void DRV88xx_SetSpeed(drv88xx_config_t *config, float speed)
 {
     if (speed == config->speed)
         return;
@@ -158,7 +144,7 @@ void DRV8825_SetSpeed(drv8825_config_t *config, float speed)
     config->speed = speed;
 }
 
-void DRV8825_SetMaxSpeed(drv8825_config_t *config, float max_speed)
+void DRV88xx_SetMaxSpeed(drv88xx_config_t *config, float max_speed)
 {
     if (max_speed <= 0.0f)
         return; // Invalid max speed, ignore
@@ -173,43 +159,44 @@ void DRV8825_SetMaxSpeed(drv8825_config_t *config, float max_speed)
             computeNewSpeed(config);
         }
     }
-
 }
 
-void DRV8825_SetAcceleration(drv8825_config_t *config, float acceleration)
+void DRV88xx_SetAcceleration(drv88xx_config_t *config, float acceleration)
 {
     if (acceleration <= 0.0f)
         return; // Invalid acceleration, ignore
-    else if (config->acceleration != acceleration)
+
+    if (config->acceleration != acceleration)
     {
-        config->n = config->n * (config->acceleration / acceleration);
-        config->c0 = 0.676f * sqrtf(2.0f / acceleration) * 1000000.0f; // Equation 15
+        config->n = (uint32_t)((float)config->n * (config->acceleration / acceleration));
+        config->c0 = (676000.0f * 1.41421356f) / (acceleration * config->c0);
         config->acceleration = acceleration;
         computeNewSpeed(config);
     }
 }
 
-void DRV8825_MoveTo(drv8825_config_t *config, int32_t target_pos)
+void DRV88xx_MoveTo(drv88xx_config_t *config, int32_t target_pos)
 {
-    if (target_pos != config->target_pos) {
+    if (target_pos != config->target_pos)
+    {
         config->target_pos = target_pos;
         computeNewSpeed(config);
     }
 }
 
-void DRV8825_Move(drv8825_config_t *config, int32_t relative)
+void DRV88xx_Move(drv88xx_config_t *config, int32_t relative)
 {
-    DRV8825_MoveTo(config, config->current_pos + relative);
+    DRV88xx_MoveTo(config, config->current_pos + relative);
 }
 
-bool DRV8825_Run(drv8825_config_t *config)
+bool DRV88xx_Run(drv88xx_config_t *config)
 {
-    if (DRV8825_RunSpeed(config))
+    if (DRV88xx_RunSpeed(config))
         computeNewSpeed(config);
     return (config->speed != 0.0f) || distTo(config) != 0;
 }
 
-bool DRV8825_RunSpeed(drv8825_config_t *config)
+bool DRV88xx_RunSpeed(drv88xx_config_t *config)
 {
     if (config->step_interval == 0)
         return false; // No movement required
@@ -227,19 +214,20 @@ bool DRV8825_RunSpeed(drv8825_config_t *config)
 
     // Pulse the step pin
     HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_SET);
-    HAL_Delay(config->min_pulse_width / 1000); // Delay for minimum pulse width
+    HAL_Delay(DRV88xx_MIN_PULSE_WIDTH / 1000); // Delay for minimum pulse width
     HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_RESET);
 
     config->last_step_time = now;
     return true;
 }
 
-void DRV8825_RunToPosition(drv8825_config_t *config)
+void DRV88xx_RunToPosition(drv88xx_config_t *config)
 {
-    while (DRV8825_Run(config));
+    while (DRV88xx_Run(config))
+        ;
 }
 
-bool DRV8825_RunSpeedToPosition(drv8825_config_t *config)
+bool DRV88xx_RunSpeedToPosition(drv88xx_config_t *config)
 {
     if (config->target_pos == config->current_pos)
         return false; // Already at position
@@ -247,34 +235,34 @@ bool DRV8825_RunSpeedToPosition(drv8825_config_t *config)
         config->direction = DIRECTION_CCW;
     else
         config->direction = DIRECTION_CCW;
-    return DRV8825_RunSpeed(config);
+    return DRV88xx_RunSpeed(config);
 }
 
-void DRV8825_RunToNewPosition(drv8825_config_t *config, int32_t position)
+void DRV88xx_RunToNewPosition(drv88xx_config_t *config, int32_t position)
 {
-    DRV8825_MoveTo(config, position);
-    DRV8825_RunToPosition(config);
+    DRV88xx_MoveTo(config, position);
+    DRV88xx_RunToPosition(config);
 }
 
-void DRV8825_Stop(drv8825_config_t *config)
+void DRV88xx_Stop(drv88xx_config_t *config)
 {
     if (config->speed != 0.0f)
     {
         uint32_t steps_to_stop = (uint32_t)((config->speed * config->speed) / (2.0f * config->acceleration)) + 1;
         if (config->speed > 0)
-            DRV8825_Move(config, steps_to_stop);
+            DRV88xx_Move(config, steps_to_stop);
         else
-            DRV8825_Move(config, -steps_to_stop);
+            DRV88xx_Move(config, -steps_to_stop);
     }
 }
 
-void DRV8825_DisableOutputs(drv8825_config_t *config)
+void DRV88xx_DisableOutputs(drv88xx_config_t *config)
 {
     if (config->en_port != NULL)
         HAL_GPIO_WritePin(config->en_port, config->en_pin, config->en_inverted ? GPIO_PIN_RESET : GPIO_PIN_SET);
 }
 
-void DRV8825_EnableOutputs(drv8825_config_t *config)
+void DRV88xx_EnableOutputs(drv88xx_config_t *config)
 {
     if (config->en_port != NULL)
         HAL_GPIO_WritePin(config->en_port, config->en_pin, config->en_inverted ? GPIO_PIN_SET : GPIO_PIN_RESET);

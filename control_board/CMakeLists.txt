@@ -37,6 +37,10 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# Add tiny subdirectory
+add_subdirectory(lib/tiny)
+add_subdirectory(lib/qlibs)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -44,16 +48,22 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
-    HSM/Src/hsm.c
-    Drivers/DRV8825/Src/drv8825.c
+    # Core
+    Core/Src/robot_config.c
+    Core/Src/robot_state.c
+    Core/Src/robot_control.c
+
+    # Motor Drivers
+    Drivers/Motor_Drivers/Src/drv88xx.c
+    Drivers/Motor_Drivers/Src/drv8251.c
+    Drivers/Motor_Drivers/Src/encoder.c
+    Drivers/Motor_Drivers/Src/fan.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
-    HSM/Inc
-    Drivers/DRV8825/Inc
+    # Motor Drivers
+    Drivers/Motor_Drivers/Inc
 )
 
 # Add project symbols (macros)
@@ -69,4 +79,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+    tiny
+    qlibs
 )
