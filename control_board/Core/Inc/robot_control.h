@@ -4,10 +4,24 @@
 #include "drv8251.h"
 #include "drv88xx.h"
 #include "encoder.h"
+#include "current_sense.h"
 #include "qpid.h"
 #include "stm32g491xx.h"
 #include "stm32g4xx.h"
+#include "stm32g4xx_hal_adc.h"
 
+#include <stdint.h>
+
+typedef enum {
+  KNIFETYPE_GERMAN,
+  KNIFETYPE_JAPANESE,
+  N_KNIFE_TYPES,
+} knife_type_t;
+
+typedef struct {
+  float target_bevel_angle_deg;
+  // etc..
+} sharpening_parameters_t;
 
 typedef struct {
   drv88xx_config_t *config;
@@ -36,7 +50,7 @@ typedef struct {
 
   GPIO_TypeDef *adc_port; // Optional ADC port for current sensing
   uint32_t adc_pin;   // Optional ADC pin
-  uint8_t shunt_resistor_mohm; // Shunt resistor value in milliohms for current calculation
+  current_sense_config_t curr_config; // Configuration for current sensing
 
   float target_rps; // Desired speed (rev/s)
   float dt;         // Control loop period (seconds)

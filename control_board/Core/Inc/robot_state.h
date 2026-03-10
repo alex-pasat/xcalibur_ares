@@ -42,6 +42,13 @@ typedef enum {
 void RobotState_Init(void);
 
 /**
+ * @brief Sends a signal to the robot HSM.
+ * @param sig The signal to send.
+ * @param data Pointer to the data associated with the signal.
+ */
+void RobotState_SendSignal(robot_signal_t sig, const void *data);
+
+/**
  * @brief Periodic 10 ms tick — polls joint completion and watchdog.
  *        Call from SysTick or a timer interrupt.
  */
