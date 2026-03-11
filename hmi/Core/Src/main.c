@@ -10,6 +10,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stdio.h"
+#include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_gpio.h"
 #include "stm32h7xx_hal_spi.h"
 #include <stdint.h>
@@ -221,6 +222,7 @@ void Play_Startup_Tune(void);
 uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
 void SPI_Send_Tool_Selection(KnifeType_t knife);
 uint8_t SPI_Poll_Main_Board(void);
+void L8_DrawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t percent);
 
 /**
   * @brief  The application entry point.
@@ -254,6 +256,7 @@ int main(void)
   MX_TIM4_Init(); 
 
   /* --- INITIALIZE UI --- */
+  uint32_t sharpening_start_time = 0;
   
   /* Show Splash Logo and Play Audio Chime */
   Startup_Splash_Screen();
@@ -345,6 +348,8 @@ while (1)
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   HAL_Delay(100);
               }
+              // Record the start time of sharpening for loading bar
+              sharpening_start_time = HAL_GetTick();
               
               current_ui_state = STATE_SHARPENING;
               break;
@@ -353,13 +358,31 @@ while (1)
               HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
               HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
 
+              // 1. Calculate Progress
+              uint32_t current_time = HAL_GetTick();
+              uint32_t elapsed_ms = current_time - sharpening_start_time;
+              
+              // 10% every 20 seconds (20,000 ms)
+              uint8_t progress_percent = (elapsed_ms / 20000) * 10; 
+              
+              // Cap the timer-based progress at 90%
+              if (progress_percent > 90) {
+                  progress_percent = 90;
+              }
+
               for (int i = 0; i <= 5; i++) {
                   Update_Tool_UI(0, "Sharpening in progress...", sharpening_frames[i], 2);
+                  //Draw loading bar based on progress_percent
+                  L8_DrawProgressBar(90, 580, 300, 30, progress_percent);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   HAL_Delay(100);
               }
               // Poll main board until sharpening is completely finished
               if (SPI_Poll_Main_Board() == 2) { // 2 = Sharpening Done
+                  // jump to 100% on loading bar
+                  L8_DrawProgressBar(90, 580, 300, 30, 100);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  HAL_Delay(600);
                   // Play success chime!
                   Play_Startup_Tune(); 
                   
@@ -377,6 +400,7 @@ while (1)
                 HAL_Delay (200);
               // Poll main board to check if the user physically pulled it out
               if (SPI_Poll_Main_Board() == 3) { // 3 = Knife Removed
+                  sharpening_start_time = 0;
                   // Redraw the specific knife they were just looking at
                   switch(current_knife) {
                       case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image,2); break;
@@ -616,6 +640,35 @@ void GUI_Framework(void)
   
   L8_FillRect(0, 0, UI_WIDTH, BANNER_HEIGHT, L8_BLUE);
   L8_DrawString(60, 28, "XCALIBUR ARES", L8_WHITE, 3);
+}
+
+/**
+  * @brief Draws a dynamic progress bar on Layer 0
+  */
+void L8_DrawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t percent) 
+{
+    // 1. Cap percentage at 100 just in case
+    if (percent > 100) percent = 100;
+
+    // 2. Draw a White Outline
+    L8_FillRect(x, y, width, 2, L8_WHITE); // Top edge
+    L8_FillRect(x, y + height - 2, width, 2, L8_WHITE); // Bottom edge
+    L8_FillRect(x, y, 2, height, L8_WHITE); // Left edge
+    L8_FillRect(x + width - 2, y, 2, height, L8_WHITE); // Right edge
+
+    // 3. Calculate how many pixels wide the red fill should be
+    // We subtract 4 from the width to stay inside the 2px borders
+    uint16_t fill_width = ((width - 4) * percent) / 100;
+
+    // 4. Draw the Red Fill
+    if (fill_width > 0) {
+        L8_FillRect(x + 2, y + 2, fill_width, height - 4, L8_RED);
+    }
+    
+    // 5. Blank out the remaining empty space with Black
+    if (fill_width < (width - 4)) {
+        L8_FillRect(x + 2 + fill_width, y + 2, (width - 4) - fill_width, height - 4, L8_BLACK);
+    }
 }
 
 /**
