@@ -58,6 +58,9 @@ typedef struct {
   
 } motor_ctrl_t;
 
+void StepperCtrl_Init(stepper_ctrl_t *ctrl, drv88xx_config_t *drv);
+
+
 void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
                     enc_config_t *enc, qPID_controller_t *pid,
                     qPID_Gains_t pid_gains, float dt);

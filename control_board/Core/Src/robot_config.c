@@ -166,6 +166,7 @@ extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim15;
 extern TIM_HandleTypeDef htim16;
 extern TIM_HandleTypeDef htim17;
+extern TIM_HandleTypeDef htim20;
 
 drv8251_config_t dc_pitch_drv = {
     .in1_port = PITCH_M_IN_B_GPIO_Port,

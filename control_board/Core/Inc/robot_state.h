@@ -49,8 +49,16 @@ void RobotState_Init(void);
 void RobotState_SendSignal(robot_signal_t sig, const void *data);
 
 /**
- * @brief Periodic 10 ms tick — polls joint completion and watchdog.
- *        Call from SysTick or a timer interrupt.
+ * @brief Periodic 1ms update — reads encoder, ADC, and limit switches.
+ *        Called from main loop when TIM6 1ms flag is set.
+ *        Do not call directly from interrupt context.
+ */
+void RobotState_Update(void);
+
+/**
+ * @brief Periodic 10ms tick — polls sensors, watchdog, and move completion.
+ *        Called from main loop when TIM6 10ms flag is set.
+ *        Do not call directly from interrupt context.
  */
 void RobotState_Tick(void);
 

@@ -337,10 +337,20 @@ void RobotState_SendSignal(robot_signal_t sig, const void *data) {
   tiny_hsm_send_signal((tiny_hsm_t*)&robot_hsm, sig, data);
 }
 
-void RobotState_Tick(void) {
-  // TODO: call this from a timer interrupt every 10 ms
-  robot_state_id_t s = get_current_state();
+void RobotState_Update(void) {
+  // TODO: read encoder
 
+  // TODO: read ADC
+
+  // TODO: debounce limit switches and read their state
+
+  // TODO: debounce hall sensors and read their state
+
+  // TODO: run motors
+
+}
+
+void RobotState_Tick(void) {
   /* TODO: RobotState_Tick()
   - check angle for each joint and if within threshold of target, or if 
     past the hardware limit or limit switch
@@ -351,7 +361,7 @@ void RobotState_Tick(void) {
   */
 
   // if in moving state
-  switch (s) {
+  switch (get_current_state()) {
   case STATE_MOVING:
   case STATE_HOME:
   case STATE_CLAMPING:
