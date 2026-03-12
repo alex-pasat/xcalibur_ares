@@ -52,12 +52,14 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/robot_config.c
     Core/Src/robot_state.c
     Core/Src/robot_control.c
-
+    
     # Motor Drivers
     Drivers/Motor_Drivers/Src/drv88xx.c
     Drivers/Motor_Drivers/Src/drv8251.c
     Drivers/Motor_Drivers/Src/encoder.c
     Drivers/Motor_Drivers/Src/fan.c
+    Drivers/Motor_Drivers/Src/current_sense.c
+    Drivers/Motor_Drivers/Src/hall_effect.c
 )
 
 # Add include paths

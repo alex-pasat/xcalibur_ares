@@ -4,13 +4,15 @@
  * structs for each motor, and any other global configuration variables for the
  * robot.
  */
+ #include "robot_config.h"
  #include "main.h"
-#include "robot_config.h"
 #include "drv8251.h"
 #include "encoder.h"
 #include "qpid.h"
 #include "robot_control.h"
 #include "stm32g4xx.h"
+#include "stm32g4xx_hal_adc.h"
+#include "stm32g4xx_hal_adc_ex.h"
 #include "stm32g4xx_hal_tim.h"
 
 #define DRV88xx_MAX_SPD 1000.0f
@@ -25,6 +27,10 @@
 
 // Gear Ratios TODO: set these to the actual gear ratios
 #define GEAR_RATIO_ROLL 50.0f
+
+// size of word for ADC DMA buffer
+#define ADC_BUFFER_SIZE 7
+volatile uint16_t adc_dma_buf[ADC_BUFFER_SIZE] = {0};
 
 // Stepper motor configurations
 #if 0
@@ -80,7 +86,7 @@ stepper_ctrl_t stepper_raise2 = {
             .acceleration = DRV88xx_ACCEL,
             .en_port = NULL,
             .en_pin = 0xFF,       // not used
-            .en_inverted = false, // not used
+            .en_inverted = false, // not used   
             .nfault_port = GPIOC,
             .nfault_pin = GPIO_PIN_11,
         },
@@ -310,6 +316,8 @@ enc_config_t enc_sclamp2 = {
 };
 #endif
 
+extern ADC_HandleTypeDef hadc1;
+
 motor_ctrl_t dc_pitch = {
     .drv = &dc_pitch_drv,
     .enc = &enc_pitch,
@@ -319,6 +327,11 @@ motor_ctrl_t dc_pitch = {
     .hall_pin = GPIO_PIN_13,
     .adc_port = ADC_PITCH_GPIO_Port,
     .adc_pin = ADC_PITCH_Pin,
+    .curr_config = {
+        .adc_instance = &hadc1,
+        .adc_channel = ADC_CHANNEL_6,
+        .shunt_resistor_mohm = 24,
+    },
 };
 
 motor_ctrl_t dc_roll = {
@@ -346,6 +359,11 @@ motor_ctrl_t clamp = {
     .enabled = false,
     .adc_port = ADC_KNIFECLAMP_GPIO_Port,
     .adc_pin = ADC_KNIFECLAMP_Pin,
+    .curr_config = {
+        .adc_instance = &hadc1,
+        .adc_channel = ADC_CHANNEL_1,
+        .shunt_resistor_mohm = 82,
+    },
 };
 
 #if 0
@@ -372,6 +390,10 @@ motor_ctrl_t sclamp2 = {
 #endif
 
 void RobotConfig_Init(void) {
+  // Init DMA
+  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)(uint16_t*)adc_dma_buf, ADC_BUFFER_SIZE);
+
   // Initialize stepper motor configurations
 #if 0
   DRV88xx_Init(stepper_spool.config);

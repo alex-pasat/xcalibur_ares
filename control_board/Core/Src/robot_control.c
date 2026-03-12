@@ -1,7 +1,18 @@
 #include "robot_control.h"
 #include "drv8251.h"
 #include "encoder.h"
+#include "current_sense.h"
+
 #include <stdint.h>
+
+// TODO: add target bevel angle received from SPI (type of knife)
+
+const sharpening_parameters_t sharpening_params[N_KNIFE_TYPES] = {
+  // TODO: set these to the actual target bevel angles for each knife type
+    [KNIFETYPE_GERMAN] = {.target_bevel_angle_deg = 20.0f},
+    [KNIFETYPE_JAPANESE] = {.target_bevel_angle_deg = 15.0f},
+};
+
 
 void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
                     enc_config_t *enc, qPID_controller_t *pid,
@@ -29,11 +40,15 @@ void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
   qPID_Reset(&ctrl->pid);
 }
 
-uint8_t MotorCtrl_ReadCurrent(motor_ctrl_t *ctrl) {
+float MotorCtrl_ReadCurrentMA(motor_ctrl_t *ctrl) {
   if (ctrl->adc_port == NULL) return 0; // ADC not configured
 
-  // TODO: implement ADC reading and convert to current value based on shunt resistor
-  return 0;
+  // Read current value from ADC
+  return CurrentSense_GetCurrentmA(&ctrl->curr_config);
+}
+
+void MotorCtrl_SetKnifeType(knife_type_t type) {
+  // TODO: Implement knife type setting logic
 }
 
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {

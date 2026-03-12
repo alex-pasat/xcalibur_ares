@@ -7,6 +7,12 @@
 #include "drv88xx.h"
 #include "robot_control.h"
 
+// -- Defines -----------------------------------------------------------------
+
+// TODO: set these to the actual current limits
+#define CURRENT_SENSE_THRESHOLD_KNIFECLAMP_MA 300
+#define CURRENT_SENSE_THRESHOLD_PITCH_MA 300
+
 // -- Motor Handles ------------------------------------------------------------
 
 // DRV88xx stepper motor configurations
