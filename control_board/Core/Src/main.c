@@ -82,9 +82,6 @@ static volatile uint8_t flag_1ms;
 static volatile uint8_t div_10ms;
 static volatile uint8_t flag_10ms;
 
-uint8_t usb_rx_buffer[64];
-volatile uint8_t usb_rx_flag = 0;
-volatile uint32_t usb_rx_len = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -144,15 +141,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   }
 }
 
-// Wrapper function to safely send strings
-void USB_SendString(const char *str) {
-    // Attempt to send. If the USB is busy, wait and try again.
-    while (CDC_Transmit_FS((uint8_t*)str, strlen(str)) == USBD_BUSY) {
-        // Optional: add a tiny delay or a timeout counter here so it doesn't hang forever 
-        // if the USB cable is abruptly unplugged.
-    }
-}
-
 /* USER CODE END 0 */
 
 /**
@@ -202,7 +190,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   RobotConfig_Init();
-
   RobotState_Init();
 
   /* USER CODE END 2 */
@@ -214,16 +201,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (qPID_AutoTuningComplete(&dc_roll.pid)) {
-      qPID_BindAutoTuning(&dc_roll.pid, NULL);
-    }
-
-    // // TODO: call periodic function here or from timer interrupt
-    MotorCtrl_Update(&dc_pitch);
-
+    
     if (flag_1ms) {
       flag_1ms = 0;
-      RobotState_Update();
+      StepperCtrl_Run(&stepper_underpass);
+      MotorCtrl_Update(&dc_yaw);
+      MotorCtrl_Update(&dc_pitch);
+      MotorCtrl_Update(&dc_roll);
+      MotorCtrl_Update(&clamp);
     }
 
     if (flag_10ms) {
@@ -309,12 +294,12 @@ static void MX_ADC1_Init(void)
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.DMAContinuousRequests = ENABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
   hadc1.Init.OversamplingMode = DISABLE;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)

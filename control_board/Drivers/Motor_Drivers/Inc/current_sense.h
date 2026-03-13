@@ -19,14 +19,6 @@ typedef struct {
  * @param config Current sense configuration
  * @return Current in milliamperes
  */
-float CurrentSense_GetCurrentmA(current_sense_config_t *config);
-
-/** 
- * @brief Check if the current exceeds the threshold
- * @param config Current sense configuration
- * @param threshold_ma Overcurrent threshold in milliamperes
- * @return true if overcurrent is detected, false otherwise
- */
-bool CurrentSense_CheckOvercurrent(current_sense_config_t *config, float threshold_ma);
+uint32_t CurrentSense_GetCurrentmA(current_sense_config_t *config);
 
 #endif /* CURRENT_SENSE_H */

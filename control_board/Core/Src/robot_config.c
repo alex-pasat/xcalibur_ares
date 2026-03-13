@@ -4,35 +4,33 @@
  * structs for each motor, and any other global configuration variables for the
  * robot.
  */
- #include "robot_config.h"
- #include "main.h"
+
+#include "robot_config.h"
+#include "main.h"
 #include "drv8251.h"
 #include "encoder.h"
-#include "qpid.h"
 #include "robot_control.h"
-#include "stm32g4xx.h"
-#include "stm32g4xx_hal_adc.h"
-#include "stm32g4xx_hal_adc_ex.h"
-#include "stm32g4xx_hal_tim.h"
 
-#define DRV88xx_MAX_SPD 1000.0f
-#define DRV88xx_ACCEL 50.0f
+#include "qpid.h"
+#include "tiny_ring_buffer.h"
 
-#define TIMER_FREQ_HZ 170000000 // SYSCLK Frequency
-#define TIMER_PSC 0
-#define TIMER_PWM_FREQ_HZ 50000 // Desired PWM frequency for DRV8251
+#include <string.h>
 
-// TODO: should this be hardcoded or computed based on the timer configuration?
-#define CONTROL_TIME_STEP_S 0.01f // 10 ms control loop period
+// -- PV Definitions ----------------------------------------------------------
 
-// Gear Ratios TODO: set these to the actual gear ratios
-#define GEAR_RATIO_ROLL 50.0f
+volatile uint16_t adc_dma_buf[ADC_BUFFER_SIZE];
 
-// size of word for ADC DMA buffer
-#define ADC_BUFFER_SIZE 7
-volatile uint16_t adc_dma_buf[ADC_BUFFER_SIZE] = {0};
+uint8_t spi_rx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_rx_buf;
 
-// Stepper motor configurations
+uint8_t spi_tx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_tx_buf;
+
+uint8_t usb_rx_buf[64];
+volatile uint8_t usb_rx_flag = 0;
+volatile uint32_t usb_rx_len = 0;
+
+// -- Stepper Configurations --------------------------------------------------
 #if 0
 stepper_ctrl_t stepper_spool = {
     .config =
@@ -111,8 +109,13 @@ stepper_ctrl_t stepper_underpass = {
             .nfault_port = NULL,
             .nfault_pin = 0xFF, // not used
         },
-    .limit_port = GPIOE,
-    .limit_pin = GPIO_PIN_9,
+    .limit_sw = &(gpio_sensor_t){
+        .port = GPIOE,
+        .pin = GPIO_PIN_9,
+        .threshold = 5,
+        .last_state = false,
+        .debounce_count = 0,
+    },
 };
 
 #if 0
@@ -323,9 +326,14 @@ motor_ctrl_t dc_pitch = {
     .drv = &dc_pitch_drv,
     .enc = &enc_pitch,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_13,
+    .hall_effect = &(gpio_sensor_t){
+      .port = GPIOE,
+      .pin = GPIO_PIN_13,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
+
     .adc_port = ADC_PITCH_GPIO_Port,
     .adc_pin = ADC_PITCH_Pin,
     .curr_config = {
@@ -339,25 +347,33 @@ motor_ctrl_t dc_roll = {
     .drv = &dc_roll_drv,
     .enc = &enc_roll,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_14,
+    .hall_effect = &(gpio_sensor_t) {
+      .port = GPIOE,
+      .pin = GPIO_PIN_14,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
 };
 
 motor_ctrl_t dc_yaw = {
     .drv = &dc_yaw_drv,
     .enc = &enc_yaw,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_15,
+    .hall_effect = &(gpio_sensor_t) {
+      .port = GPIOE,
+      .pin = GPIO_PIN_15,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
 };
 
 motor_ctrl_t clamp = {
     .drv = &clamp_drv,
     .enc = &enc_clamp,
     .pid = {0},
-    .enabled = false,
+
     .adc_port = ADC_KNIFECLAMP_GPIO_Port,
     .adc_pin = ADC_KNIFECLAMP_Pin,
     .curr_config = {
@@ -391,28 +407,27 @@ motor_ctrl_t sclamp2 = {
 #endif
 
 void RobotConfig_Init(void) {
+  // Initialize ring buffers
+  memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
+  memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
+  memset(&usb_rx_buf, 0, sizeof(usb_rx_buf));
+  
+  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
+  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  
+
   // Init DMA
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)(uint16_t*)adc_dma_buf, ADC_BUFFER_SIZE);
 
   // Initialize stepper motor configurations
 #if 0
-  DRV88xx_Init(stepper_spool.config);
-  DRV88xx_Init(stepper_raise1.config);
-  DRV88xx_Init(stepper_raise2.config);
-  DRV88xx_Init(stepper_bevel.config);
-  #endif
-  DRV88xx_Init(stepper_underpass.config);
+  StepperCtrl_Init(&stepper_spool, stepper_spool.config);
+  StepperCtrl_Init(&stepper_raise1, stepper_raise1.config);
+  StepperCtrl_Init(&stepper_raise2, stepper_raise2.config);
+  StepperCtrl_Init(&stepper_bevel, stepper_bevel.config);
+#endif
+  StepperCtrl_Init(&stepper_underpass, stepper_underpass.config);
 
-  Encoder_Init(&enc_pitch);
-  Encoder_Init(&enc_roll);
-  Encoder_Init(&enc_yaw);
-  Encoder_Init(&enc_clamp);
-  #if 0
-  Encoder_Init(&enc_tension);
-  Encoder_Init(&enc_sclamp1);
-  Encoder_Init(&enc_sclamp2);
-  #endif
   // qPID_BindAutoTuning(&dc_roll.pid, &at_pitch);
   // qPID_BindAutoTuning(&dc_roll.pid, &at_roll);
   // qPID_BindAutoTuning(&dc_yaw.pid, &at_yaw);

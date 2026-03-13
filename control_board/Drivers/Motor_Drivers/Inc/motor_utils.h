@@ -1,6 +1,8 @@
 #ifndef MOTOR_UTILS_H
 #define MOTOR_UTILS_H
 
+#include <stdint.h>
+
 /* Includes ------------------------------------------------------------------*/
 
 typedef enum

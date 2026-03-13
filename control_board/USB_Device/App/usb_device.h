@@ -82,6 +82,8 @@ void MX_USB_Device_Init(void);
  */
 /* USER CODE BEGIN FD */
 
+void USB_SendString(const char *str);
+
 /* USER CODE END FD */
 /**
   * @}

@@ -94,7 +94,7 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-extern uint8_t usb_rx_buffer[64];
+extern uint8_t usb_rx_buf[64];
 extern volatile uint8_t usb_rx_flag;
 extern volatile uint32_t usb_rx_len;
 
@@ -266,8 +266,8 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   /* USER CODE BEGIN 6 */
   if (*Len < 64) {
       // 2. Fast copy the data into our global buffer
-      memcpy(usb_rx_buffer, Buf, *Len);
-      usb_rx_buffer[*Len] = '\0'; // Null-terminate to make string reading easy
+      memcpy(usb_rx_buf, Buf, *Len);
+      usb_rx_buf[*Len] = '\0'; // Null-terminate to make string reading easy
       
       // 3. Record the length and set the flag
       usb_rx_len = *Len;

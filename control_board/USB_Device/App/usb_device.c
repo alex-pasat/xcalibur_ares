@@ -56,6 +56,15 @@ extern USBD_DescriptorsTypeDef CDC_Desc;
  * -- Insert your external function declaration here --
  */
 /* USER CODE BEGIN 1 */
+// Wrapper function to safely send strings
+
+void USB_SendString(const char *str) {
+    // Attempt to send. If the USB is busy, wait and try again.
+    while (CDC_Transmit_FS((uint8_t*)str, strlen(str)) == USBD_BUSY) {
+        // Optional: add a tiny delay or a timeout counter here so it doesn't hang forever 
+        // if the USB cable is abruptly unplugged.
+    }
+}
 
 /* USER CODE END 1 */
 

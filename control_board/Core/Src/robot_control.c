@@ -1,5 +1,6 @@
 #include "robot_control.h"
 #include "drv8251.h"
+#include "drv88xx.h"
 #include "encoder.h"
 #include "current_sense.h"
 
@@ -8,11 +9,58 @@
 // TODO: add target bevel angle received from SPI (type of knife)
 
 const sharpening_parameters_t sharpening_params[N_KNIFE_TYPES] = {
-  // TODO: set these to the actual target bevel angles for each knife type
-    [KNIFETYPE_GERMAN] = {.target_bevel_angle_deg = 20.0f},
-    [KNIFETYPE_JAPANESE] = {.target_bevel_angle_deg = 15.0f},
+    [KNIFETYPE_CHEF] = {.target_bevel_angle_deg = 20.0f},
+    [KNIFETYPE_PARING] = {.target_bevel_angle_deg = 15.0f},
+    [KNIFETYPE_GYOTO] = {.target_bevel_angle_deg = 18.0f},
+    [KNIFETYPE_JAP_UTIL] = {.target_bevel_angle_deg = 10.0f},
+    // TODO: set thse to actual sharpening params
 };
 
+static knife_type_t current_knife_type = KNIFETYPE_CHEF;
+
+// -- Knife Parameters --------------------------------------------------------
+
+void Ctrl_SetKnifeType(knife_type_t type) {
+  current_knife_type = type;
+}
+
+// -- Stepper Control ---------------------------------------------------------
+
+// TODO: set these to reasonable values.. we probably won't need to be going 
+// very fast since we want precise control over the movement
+#define DRV88xx_MAX_SPD 1000.0f
+#define DRV88xx_ACCEL 50.0f
+
+void StepperCtrl_Init(stepper_ctrl_t *ctrl, drv88xx_config_t *drv) {
+  DRV88xx_Init(drv);
+
+  DRV88xx_SetMaxSpeed(drv, DRV88xx_MAX_SPD);
+  DRV88xx_SetAcceleration(drv, DRV88xx_ACCEL);
+
+  ctrl->config = drv;
+}
+
+void StepperCtrl_SetTarget(stepper_ctrl_t *ctrl, int32_t target_pos) {
+  ctrl->config->target_pos = target_pos;
+}
+
+void StepperCtrl_SetHome(stepper_ctrl_t *ctrl) {
+  DRV88xx_SetCurrentPosition(ctrl->config, 0);
+}
+
+bool StepperCtrl_Run(stepper_ctrl_t *ctrl) {
+  if (ctrl->limit_sw->port != NULL) {
+    // TODO: debounce
+    if(0) {
+      DRV88xx_Stop(ctrl->config);
+      return false;
+    }
+  }
+
+  return DRV88xx_Run(ctrl->config);
+}
+
+// -- Motor Control -----------------------------------------------------------
 
 void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
                     enc_config_t *enc, qPID_controller_t *pid,
@@ -24,7 +72,7 @@ void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
   ctrl->enabled = false;
 
   qPID_Setup(&ctrl->pid, pid_gains.Kc, pid_gains.Ki, pid_gains.Kd, dt);
-  DRV8251_Init(drv); // Initialize the motor driverFF
+  DRV8251_Init(drv); // Initialize the motor driver
   if (enc != NULL) Encoder_Init(enc); // Initialize the encoder
 }
 
@@ -40,37 +88,43 @@ void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
   qPID_Reset(&ctrl->pid);
 }
 
-float MotorCtrl_ReadCurrentMA(motor_ctrl_t *ctrl) {
-  if (ctrl->adc_port == NULL) return 0; // ADC not configured
-
-  // Read current value from ADC
-  return CurrentSense_GetCurrentmA(&ctrl->curr_config);
-}
-
 void MotorCtrl_SetKnifeType(knife_type_t type) {
   // TODO: Implement knife type setting logic
 }
 
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {
-  // check if encoder is used
-  if (ctrl->enc == NULL)
-    // lowk this should not happen
-    return;
+  if (!ctrl->enabled) return;
 
-  // Only update if enabled
-  if (!ctrl->enabled)
-    return;
-
-  // TODO: compute delta_ticks or call from fixed time interrupt to compute
-  // velocity
-
+  
   // Read current speed from encoder
   float current_rps = Encoder_ComputeVelocity(ctrl->enc, ctrl->dt);
-
+  
   // Compute control action using PID controller
   float control_signal = qPID_Control(
     &ctrl->pid, ctrl->target_rps, current_rps);
+    
+    // Set motor speed based on control signal
+    DRV8251_SetSpeed(ctrl->drv, control_signal);
 
-  // Set motor speed based on control signal
-  DRV8251_SetSpeed(ctrl->drv, control_signal);
+    ctrl->current_ma = CurrentSense_GetCurrentmA(&ctrl->curr_config);
+
+    ctrl->current_angle_deg = Encoder_GetAngleDeg(ctrl->enc);
+
+    // TODO: limit switch debouncing  CHECK THIS
+    if (ctrl->limit_sw->port != NULL) {
+      if (HAL_GPIO_ReadPin(ctrl->limit_sw->port, ctrl->limit_sw->pin) == GPIO_PIN_SET) {
+        if (ctrl->limit_sw->debounce_count < ctrl->limit_sw->threshold) {
+          ctrl->limit_sw->debounce_count++;
+        } else {
+          ctrl->limit_sw->last_state = true;
+        }
+      } else {
+        if (ctrl->limit_sw->debounce_count > 0) {
+          ctrl->limit_sw->debounce_count--;
+        } else {
+          ctrl->limit_sw->last_state = false;
+        }
+      }
+    }
+
 }

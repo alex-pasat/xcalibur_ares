@@ -7,21 +7,16 @@
 // ADC DMA buffer defined in robot_config.c
 extern volatile uint16_t adc_dma_buf[7]; 
 
-static float adc_to_current_ma(uint16_t adc_value, uint8_t shunt_resistor_mohm) {
+static uint32_t adc_to_current_ma(uint16_t adc_value, uint8_t shunt_resistor_mohm) {
     // Convert ADC value to voltage
     float voltage_mv = ((float)adc_value / CURRENT_SENSE_ADC_RESOLUTION) * CURRENT_SENSE_VREF_MV;
     // Calculate current using Ohm's law: I = V / R
-    float current_ma = voltage_mv / (shunt_resistor_mohm / 1000.0f); // Convert mOhm to Ohm
-    return current_ma;
+    float current_ma = voltage_mv / shunt_resistor_mohm; 
+    return (uint32_t)(current_ma * 1000.0f); // Convert to milliamps and scale
 }
 
-float CurrentSense_GetCurrentmA(current_sense_config_t *config) {
+uint32_t CurrentSense_GetCurrentmA(current_sense_config_t *config) {
     // Get the latest ADC value from the DMA buffer
     uint16_t adc_value = adc_dma_buf[config->adc_channel];
     return adc_to_current_ma(adc_value, config->shunt_resistor_mohm);
-}
-
-bool CurrentSense_CheckOvercurrent(current_sense_config_t *config, float threshold_ma) {
-    float current_ma = CurrentSense_GetCurrentmA(config);
-    return current_ma > threshold_ma;
 }

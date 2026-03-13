@@ -12,26 +12,33 @@
 // -- Type Definitions --------------------------------------------------------
 
 typedef enum {
-  SIG_CMD_ESTOP = tiny_hsm_signal_user_start + 1,
+  SIG_ESTOP = tiny_hsm_signal_user_start + 1,
   SIG_FAULT,
   SIG_FAULT_CLEARED,
 
   SIG_CMD_RECEIVE_SPI,
-  SIG_CMD_RECEIVE_UART,
+  SIG_CMD_RECEIVE_USB,
+
   SIG_RECEIVED_SPI,
-  SIG_RECEIVED_UART,
+  SIG_RECEIVED_USB,
+
+  SIG_AWAIT_KNIFE_DETECTION,
+  SIG_KNIFE_DETECTED,
+  SIG_KNIFE_REMOVED,
+
+  SIG_KNIFE_CLAMPED,
 
   SIG_MOVE_COMPLETE,
-  SIG_CMD_HOME,
-  SIG_CMD_CLAMP,
-  SIG_CMD_UNCLAMP,
-  SIG_CMD_ARM, // TODO: rename to something more descriptive of the actual arm
-               // movement
-  SIG_CMD_SHARPEN,
 
-  SIG_LIMIT_TRIGGERED,
-  SIG_HALL_TRIGGERED,
 } robot_signal_t;
+
+typedef enum {
+  ROBOT_HMI_CMD_NONE           = 0x00,
+  ROBOT_HMI_CMD_KNIFE_CLAMPED  = 0x01,
+  ROBOT_HMI_CMD_KNIFE_DONE     = 0x02,
+  ROBOT_HMI_CMD_KNIFE_REMOVED  = 0x03,
+  // TODO: add more commands as needed
+} robot_hmi_command_t;
 
 //-- Function Prototypes ------------------------------------------------------
 
@@ -47,13 +54,6 @@ void RobotState_Init(void);
  * @param data Pointer to the data associated with the signal.
  */
 void RobotState_SendSignal(robot_signal_t sig, const void *data);
-
-/**
- * @brief Periodic 1ms update — reads encoder, ADC, and limit switches.
- *        Called from main loop when TIM6 1ms flag is set.
- *        Do not call directly from interrupt context.
- */
-void RobotState_Update(void);
 
 /**
  * @brief Periodic 10ms tick — polls sensors, watchdog, and move completion.
