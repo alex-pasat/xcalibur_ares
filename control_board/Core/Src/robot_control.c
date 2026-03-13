@@ -9,11 +9,11 @@
 // TODO: add target bevel angle received from SPI (type of knife)
 
 const sharpening_parameters_t sharpening_params[N_KNIFE_TYPES] = {
-    [KNIFETYPE_CHEF] = {.target_bevel_angle_deg = 20.0f},
-    [KNIFETYPE_PARING] = {.target_bevel_angle_deg = 15.0f},
-    [KNIFETYPE_GYOTO] = {.target_bevel_angle_deg = 18.0f},
-    [KNIFETYPE_JAP_UTIL] = {.target_bevel_angle_deg = 10.0f},
-    // TODO: set thse to actual sharpening params
+  [KNIFETYPE_CHEF] = {.target_bevel_angle_deg = 20.0f},
+  [KNIFETYPE_PARING] = {.target_bevel_angle_deg = 15.0f},
+  [KNIFETYPE_GYOTO] = {.target_bevel_angle_deg = 18.0f},
+  [KNIFETYPE_JAP_UTIL] = {.target_bevel_angle_deg = 10.0f},
+  // TODO: set thse to actual sharpening params
 };
 
 static knife_type_t current_knife_type = KNIFETYPE_CHEF;
@@ -92,6 +92,29 @@ void MotorCtrl_SetKnifeType(knife_type_t type) {
   // TODO: Implement knife type setting logic
 }
 
+static bool debounce_sensor(gpio_sensor_t *sensor) {
+  if (sensor->port == NULL) return false; // No sensor connected
+
+  // Read the raw state of the sensor
+  bool raw = HAL_GPIO_ReadPin(sensor->port, sensor->pin) == GPIO_PIN_SET;
+  // Check if the state has changed since the last reading
+  if (raw != sensor->last_state) {
+    // State has changed, reset debounce counter
+    sensor->debounce_count = 0;
+    sensor->last_state = raw;
+  } else {
+    // State is the same, increment debounce counter
+    if (sensor->debounce_count < sensor->threshold) {
+      sensor->debounce_count++;
+    } else {
+      // Debounce threshold reached, return stable state
+      sensor->state = raw;
+    }
+  }
+  // Debouncing, return previous stable state
+  return sensor->state;
+}
+
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {
   if (!ctrl->enabled) return;
 
@@ -102,29 +125,14 @@ void MotorCtrl_Update(motor_ctrl_t *ctrl) {
   // Compute control action using PID controller
   float control_signal = qPID_Control(
     &ctrl->pid, ctrl->target_rps, current_rps);
-    
-    // Set motor speed based on control signal
-    DRV8251_SetSpeed(ctrl->drv, control_signal);
+  
+  // Set motor speed based on control signal
+  DRV8251_SetSpeed(ctrl->drv, control_signal);
 
-    ctrl->current_ma = CurrentSense_GetCurrentmA(&ctrl->curr_config);
+  ctrl->current_ma = CurrentSense_GetCurrentmA(&ctrl->curr_config);
 
-    ctrl->current_angle_deg = Encoder_GetAngleDeg(ctrl->enc);
+  ctrl->current_angle_deg = Encoder_GetAngleDeg(ctrl->enc);
 
-    // TODO: limit switch debouncing  CHECK THIS
-    if (ctrl->limit_sw->port != NULL) {
-      if (HAL_GPIO_ReadPin(ctrl->limit_sw->port, ctrl->limit_sw->pin) == GPIO_PIN_SET) {
-        if (ctrl->limit_sw->debounce_count < ctrl->limit_sw->threshold) {
-          ctrl->limit_sw->debounce_count++;
-        } else {
-          ctrl->limit_sw->last_state = true;
-        }
-      } else {
-        if (ctrl->limit_sw->debounce_count > 0) {
-          ctrl->limit_sw->debounce_count--;
-        } else {
-          ctrl->limit_sw->last_state = false;
-        }
-      }
-    }
-
+  ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
+  ctrl->hall_triggered = debounce_sensor(ctrl->hall_effect);
 }

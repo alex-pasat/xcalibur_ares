@@ -125,12 +125,6 @@ static const tiny_hsm_configuration_t robot_hsm_config = {
 
 // -- IDLE STATE --------------------------------------------------------------
 
-static void handle_spi_data(const uint8_t *data) {
-  // data is always one byte representing the knife type
-  knife_type_t knife_type = (knife_type_t)data[0];
-  Ctrl_SetKnifeType(knife_type);
-}
-
 static tiny_hsm_result_t state_receiving_spi(tiny_hsm_t *hsm,
                                              tiny_hsm_signal_t signal,
                                              const void *data) {
@@ -146,8 +140,12 @@ static tiny_hsm_result_t state_receiving_spi(tiny_hsm_t *hsm,
     return tiny_hsm_result_signal_consumed;
 
   case SIG_RECEIVED_SPI:
-    // handle SPI data
-    handle_spi_data(data);
+    if (data == NULL) {
+      return tiny_hsm_result_signal_consumed;
+    }
+
+    knife_type_t knife_type = (knife_type_t)*(const uint8_t*)data;
+    Ctrl_SetKnifeType(knife_type);
 
     // once we set knife type, wait for USB command that knife is seen
     tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_receiving_usb);
@@ -199,6 +197,18 @@ static tiny_hsm_result_t state_receiving_usb(tiny_hsm_t *hsm,
     return tiny_hsm_result_signal_consumed;
 
   case SIG_RECEIVED_USB:
+  // TODO: decide on USB data format
+    // if knife detected
+    if (0) {
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_clamping);
+    }
+
+    // if kinematics data received
+    if (0) {
+      // save kinematics data to appropriate PVs for use in movement state
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_moving);
+    }
+
     tiny_hsm_state_t next_state = handle_usb_data(data, usb_rx_len);
 
     if (next_state) {

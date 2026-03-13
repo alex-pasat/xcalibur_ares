@@ -29,6 +29,7 @@ typedef struct {
   uint32_t pin;
   uint8_t threshold;
   bool last_state;
+  bool state;
   uint8_t debounce_count;
 } gpio_sensor_t;
 
