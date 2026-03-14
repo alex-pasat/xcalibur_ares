@@ -24,24 +24,50 @@ void Ctrl_SetKnifeType(knife_type_t type) {
   current_knife_type = type;
 }
 
+// -- Helper Functions --------------------------------------------------------
+
+
+static bool debounce_sensor(gpio_sensor_t *sensor) {
+  if (sensor->port == NULL) return false; // No sensor connected
+
+  // Read the raw state of the sensor
+  bool raw = HAL_GPIO_ReadPin(sensor->port, sensor->pin) == GPIO_PIN_SET;
+  // Check if the state has changed since the last reading
+  if (raw != sensor->last_state) {
+    // State has changed, reset debounce counter
+    sensor->debounce_count = 0;
+    sensor->last_state = raw;
+  } else {
+    // State is the same, increment debounce counter
+    if (sensor->debounce_count < sensor->threshold) {
+      sensor->debounce_count++;
+    } else {
+      // Debounce threshold reached, return stable state
+      sensor->state = raw;
+    }
+  }
+  // Debouncing, return previous stable state
+  return sensor->state;
+}
+
 // -- Stepper Control ---------------------------------------------------------
 
 // TODO: set these to reasonable values.. we probably won't need to be going 
 // very fast since we want precise control over the movement
 #define DRV88xx_MAX_SPD 1000.0f
-#define DRV88xx_ACCEL 50.0f
+#define DRV88xx_ACCEL 500.0f
 
 void StepperCtrl_Init(stepper_ctrl_t *ctrl, drv88xx_config_t *drv) {
-  DRV88xx_Init(drv);
-
-  DRV88xx_SetMaxSpeed(drv, DRV88xx_MAX_SPD);
-  DRV88xx_SetAcceleration(drv, DRV88xx_ACCEL);
-
+  DRV88xx_Init(drv, DRV88xx_MAX_SPD, DRV88xx_ACCEL);  
   ctrl->config = drv;
 }
 
 void StepperCtrl_SetTarget(stepper_ctrl_t *ctrl, int32_t target_pos) {
-  ctrl->config->target_pos = target_pos;
+  DRV88xx_MoveTo(ctrl->config, target_pos);
+}
+
+void StepperCtrl_Stop(stepper_ctrl_t *ctrl) {
+  DRV88xx_Stop(ctrl->config);
 }
 
 void StepperCtrl_SetHome(stepper_ctrl_t *ctrl) {
@@ -49,13 +75,13 @@ void StepperCtrl_SetHome(stepper_ctrl_t *ctrl) {
 }
 
 bool StepperCtrl_Run(stepper_ctrl_t *ctrl) {
-  if (ctrl->limit_sw->port != NULL) {
-    // TODO: debounce
-    if(0) {
-      DRV88xx_Stop(ctrl->config);
-      return false;
-    }
-  }
+  ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
+
+  // TODO: uncomment this when we have limit switches wired up
+  // if (ctrl->limit_triggered) {
+  //   DRV88xx_Stop(ctrl->config);
+  //   return true;
+  // }
 
   return DRV88xx_Run(ctrl->config);
 }
@@ -90,29 +116,6 @@ void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
 
 void MotorCtrl_SetKnifeType(knife_type_t type) {
   // TODO: Implement knife type setting logic
-}
-
-static bool debounce_sensor(gpio_sensor_t *sensor) {
-  if (sensor->port == NULL) return false; // No sensor connected
-
-  // Read the raw state of the sensor
-  bool raw = HAL_GPIO_ReadPin(sensor->port, sensor->pin) == GPIO_PIN_SET;
-  // Check if the state has changed since the last reading
-  if (raw != sensor->last_state) {
-    // State has changed, reset debounce counter
-    sensor->debounce_count = 0;
-    sensor->last_state = raw;
-  } else {
-    // State is the same, increment debounce counter
-    if (sensor->debounce_count < sensor->threshold) {
-      sensor->debounce_count++;
-    } else {
-      // Debounce threshold reached, return stable state
-      sensor->state = raw;
-    }
-  }
-  // Debouncing, return previous stable state
-  return sensor->state;
 }
 
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {

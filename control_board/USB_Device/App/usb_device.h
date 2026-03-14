@@ -84,6 +84,8 @@ void MX_USB_Device_Init(void);
 
 void USB_SendString(const char *str);
 
+uint8_t CDC_IsConnected(void);
+
 /* USER CODE END FD */
 /**
   * @}

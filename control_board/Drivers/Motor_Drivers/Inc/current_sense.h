@@ -10,7 +10,7 @@
 
 typedef struct {
     ADC_HandleTypeDef *adc_instance; // ADC instance (e.g., ADC1)
-    uint32_t adc_channel;      // ADC channel for current sensing
+    unsigned long adc_index;      // ADC channel for current sensing
     uint8_t shunt_resistor_mohm; // Shunt resistor value in milliohms for current calculation
 } current_sense_config_t;
 

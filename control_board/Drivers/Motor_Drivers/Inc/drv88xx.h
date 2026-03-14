@@ -8,6 +8,7 @@
 #define DRV88xx_H
 
 // -- INCLUDES ----------------------------------------------------------------
+#include "stm32g491xx.h"
 #include "stm32g4xx.h"
 #include "motor_utils.h"
 
@@ -17,7 +18,12 @@
 // -- DEFINES -----------------------------------------------------------------
 
 // Minimum pulse width in microseconds for the step pin.
-#define DRV88xx_MIN_PULSE_WIDTH 2 
+#define DRV88xx_MIN_PULSE_WIDTH_US 2
+
+#define DRV88xx_MAX_SPEED 1000.0f // Maximum speed in steps per second
+#define DRV88xx_ACCELERATION 500.0f // Acceleration in steps per second^2
+
+#define DRV88xx_DEFAULT_SPEED 100.0f // Default speed in steps per second if not set explicitly
 
 // -- TYPE DEFINITIONS --------------------------------------------------------
 typedef struct
@@ -32,6 +38,18 @@ typedef struct
     GPIO_TypeDef *dir_port;
     uint32_t dir_pin;
     bool dir_inverted;
+
+    // Enable pin for stepper driver, or 0xFF if unused.
+    GPIO_TypeDef *en_port; // GPIO port for enable pin, or NULL if not used
+    uint32_t en_pin; // GPIO pin for enable, or 0xFF if not used
+    bool en_inverted; // true if enable pin is active LOW, false if active HIGH
+
+    GPIO_TypeDef *nfault_port; // GPIO port for fault pin, or NULL if not used
+    uint32_t nfault_pin; // GPIO pin for fault, or 0xFF if not used
+
+    TIM_HandleTypeDef *tim; // Timer used for step timing
+
+    uint8_t MICROSTEPS;
 
     // absolute current position in steps
     int32_t current_pos; // Steps
@@ -53,13 +71,6 @@ typedef struct
     // The last step time in microseconds
     uint32_t last_step_time;
 
-    // Enable pin for stepper driver, or 0xFF if unused.
-    GPIO_TypeDef *en_port; // GPIO port for enable pin, or NULL if not used
-    uint32_t en_pin; // GPIO pin for enable, or 0xFF if not used
-    bool en_inverted; // true if enable pin is active LOW, false if active HIGH
-
-    GPIO_TypeDef *nfault_port; // GPIO port for fault pin, or NULL if not used
-    uint32_t nfault_pin; // GPIO pin for fault, or 0xFF if not used
 
     uint32_t n;     // The step counter for speed calculations
     float c0;       // Initial step size in microseconds
@@ -67,11 +78,11 @@ typedef struct
     float cmin;     // Min step size in microseconds based on maxSpeed
 
     bool direction; // Current direction of the motor
-    uint32_t step_interval; // Current interval between steps in microseconds
+    uint32_t step_interval_us; // Current interval between steps in microseconds
 } drv88xx_config_t;
 
 // -- FUNCTION PROTOTYPES -----------------------------------------------------
-void DRV88xx_Init(drv88xx_config_t *config);
+void DRV88xx_Init(drv88xx_config_t *config, float max_speed, float acceleration);
 
 /**
  * @brief Set the current position of the motor. This will set both the current

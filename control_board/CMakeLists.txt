@@ -52,6 +52,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/robot_config.c
     Core/Src/robot_state.c
     Core/Src/robot_control.c
+    Core/Src/test.c
     
     # Motor Drivers
     Drivers/Motor_Drivers/Src/drv88xx.c
@@ -83,4 +84,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     # Add user defined libraries
     tiny
     qlibs
+    m
 )

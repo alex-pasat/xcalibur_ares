@@ -26,8 +26,6 @@ typedef enum {
   SIG_KNIFE_DETECTED,
   SIG_KNIFE_REMOVED,
 
-  SIG_KNIFE_CLAMPED,
-
   SIG_MOVE_COMPLETE,
 
 } robot_signal_t;
@@ -39,6 +37,12 @@ typedef enum {
   ROBOT_HMI_CMD_KNIFE_REMOVED  = 0x03,
   // TODO: add more commands as needed
 } robot_hmi_command_t;
+
+typedef enum {
+  ROBOT_RPI_CMD_NONE            = 0x00,
+  ROBOT_RPI_REQUEST_DETECT      = 0x01,
+  ROBOT_RPI_REQUEST_KINEMATICS  = 0x02,
+} robot_rpi_command_t;
 
 //-- Function Prototypes ------------------------------------------------------
 

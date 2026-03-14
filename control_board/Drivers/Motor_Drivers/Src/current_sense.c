@@ -17,6 +17,6 @@ static uint32_t adc_to_current_ma(uint16_t adc_value, uint8_t shunt_resistor_moh
 
 uint32_t CurrentSense_GetCurrentmA(current_sense_config_t *config) {
     // Get the latest ADC value from the DMA buffer
-    uint16_t adc_value = adc_dma_buf[config->adc_channel];
+    uint16_t adc_value = adc_dma_buf[config->adc_index];
     return adc_to_current_ma(adc_value, config->shunt_resistor_mohm);
 }

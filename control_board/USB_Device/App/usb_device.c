@@ -66,6 +66,10 @@ void USB_SendString(const char *str) {
     }
 }
 
+uint8_t CDC_IsConnected(void) {
+    return (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED);
+}
+
 /* USER CODE END 1 */
 
 /**

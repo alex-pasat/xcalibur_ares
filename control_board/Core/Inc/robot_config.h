@@ -11,9 +11,6 @@
 #define CURRENT_THRESHOLD_KNIFECLAMP_MA 300
 #define CURRENT_SENSE_THRESHOLD_PITCH_MA 300
 
-#define DRV88xx_MAX_SPD 1000.0f
-#define DRV88xx_ACCEL 50.0f
-
 #define TIMER_FREQ_HZ 170000000 // SYSCLK Frequency
 #define TIMER_PSC 0
 #define TIMER_PWM_FREQ_HZ 50000 // Desired PWM frequency for DRV8251
@@ -27,8 +24,7 @@
 #define SPI_BUF_SIZE 4
 #define USB_BUF_SIZE 1024
 
-// size of word for ADC DMA buffer
-#define ADC_BUFFER_SIZE 7
+#define ADC_NUM_CHANNELS 3
 
 // -- Motor Handles ------------------------------------------------------------
 
