@@ -52,18 +52,20 @@ static bool debounce_sensor(gpio_sensor_t *sensor) {
 
 // -- Stepper Control ---------------------------------------------------------
 
-// TODO: set these to reasonable values.. we probably won't need to be going 
-// very fast since we want precise control over the movement
-#define DRV88xx_MAX_SPD 1000.0f
-#define DRV88xx_ACCEL 500.0f
+#define DRV88xx_MAX_SPD 200.0f
+#define DRV88xx_ACCEL 50.0f
 
 void StepperCtrl_Init(stepper_ctrl_t *ctrl, drv88xx_config_t *drv) {
-  DRV88xx_Init(drv, DRV88xx_MAX_SPD, DRV88xx_ACCEL);  
+  DRV88xx_Init(
+    drv,
+    DRV88xx_MAX_SPD * ctrl->MICROSTEPS,
+    DRV88xx_ACCEL * ctrl->MICROSTEPS
+  );
   ctrl->config = drv;
 }
 
 void StepperCtrl_SetTarget(stepper_ctrl_t *ctrl, int32_t target_pos) {
-  DRV88xx_MoveTo(ctrl->config, target_pos);
+  DRV88xx_MoveTo(ctrl->config, target_pos * ctrl->MICROSTEPS);
 }
 
 void StepperCtrl_Stop(stepper_ctrl_t *ctrl) {

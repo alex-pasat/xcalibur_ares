@@ -9,14 +9,14 @@ static uint32_t get_tim_us(drv88xx_config_t *config) {
   return (HAL_GetTick() * 1000) + __HAL_TIM_GET_COUNTER(config->tim);
 }
 
-static int32_t distTo(drv88xx_config_t *config)
+static int32_t dist_to_go(drv88xx_config_t *config)
 {
     return config->target_pos - config->current_pos;
 }
 
-static float computeNewSpeed(drv88xx_config_t *config)
+static float compute_new_speed(drv88xx_config_t *config)
 {
-  int32_t dist_to = distTo(config);
+  int32_t dist_to = dist_to_go(config);
   int32_t steps_to_stop = (int32_t)((config->speed * config->speed) / (2.0f * config->acceleration));
 
   if (dist_to == 0 && steps_to_stop <= 1)
@@ -29,39 +29,40 @@ static float computeNewSpeed(drv88xx_config_t *config)
 
   if (dist_to > 0)
   {
-      // We are anticlockwise from the target
-      // Need to go clockwise from here, maybe decelerate now
-      if (config->n > 0)
-      {
-          // Currently accelerating, need to decel now? Or maybe going the wrong way?
-          if ((steps_to_stop >= dist_to) || config->direction == DIRECTION_CCW)
-              config->n = -steps_to_stop; // Start deceleration
-      }
-      else if (config->n < 0)
-      {
-          // Currently decelerating, need to accel again?
-          if ((steps_to_stop < dist_to) && config->direction == DIRECTION_CW)
-              config->n = -config->n; // Start accceleration
-      }
+    // We are anticlockwise from the target
+    // Need to go clockwise from here, maybe decelerate now
+    if (config->n > 0)
+    {
+      // Currently accelerating, need to decel now? Or maybe going the wrong way?
+      if ((steps_to_stop >= dist_to) || config->direction == DIRECTION_CCW)
+        config->n = -steps_to_stop; // Start deceleration
+    }
+    else if (config->n < 0)
+    {
+      // Currently decelerating, need to accel again?
+      if ((steps_to_stop < dist_to) && config->direction == DIRECTION_CW)
+        config->n = -config->n; // Start accceleration
+    }
   }
   else if (dist_to < 0)
   {
-      // We are clockwise from the target
-      // Need to go anticlockwise from here, maybe decelerate
-      if (config->n > 0)
-      {
-          // Currently accelerating, need to decel now? Or maybe going the wrong way?
-          if ((steps_to_stop >= -dist_to) || config->direction == DIRECTION_CW)
-              config->n = -steps_to_stop; // Start deceleration
-      }
-      else if (config->n < 0)
-      {
-          // Currently decelerating, need to accel again?
-          if ((steps_to_stop < -dist_to) && config->direction == DIRECTION_CCW)
-              config->n = -config->n; // Start accceleration
-      }
+    // We are clockwise from the target
+    // Need to go anticlockwise from here, maybe decelerate
+    if (config->n > 0)
+    {
+      // Currently accelerating, need to decel now? Or maybe going the wrong way?
+      if ((steps_to_stop >= -dist_to) || config->direction == DIRECTION_CW)
+      config->n = -steps_to_stop; // Start deceleration
+    }
+    else if (config->n < 0)
+    {
+      // Currently decelerating, need to accel again?
+      if ((steps_to_stop < -dist_to) && config->direction == DIRECTION_CCW)
+      config->n = -config->n; // Start accceleration
+    }
   }
 
+  // need to acclelerate or decelerate
   if (config->n == 0)
   {
       // first step from stopped
@@ -77,7 +78,7 @@ static float computeNewSpeed(drv88xx_config_t *config)
 
   config->n++;
   config->step_interval_us = (uint32_t)config->cn;
-  config->speed = 1000000.0f / (config->step_interval_us * config->MICROSTEPS);
+  config->speed = 1000000.0f / (config->cn);
   config->speed = (config->direction == DIRECTION_CW) ? config->speed : -config->speed;
 
   return config->step_interval_us;
@@ -94,7 +95,7 @@ void DRV88xx_Init(drv88xx_config_t *config, float max_speed, float acceleration)
     config->last_step_time = 0;
 
     // Initialize GPIO pins
-    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, GPIO_PIN_RESET);   // Default direction
+    HAL_GPIO_WritePin(config->dir_port, config->dir_pin, config->dir_inverted ? GPIO_PIN_SET : GPIO_PIN_RESET);
     HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_RESET); // Ensure step pin is low
     // disable the motor by default
     if (config->en_port != NULL)
@@ -119,17 +120,17 @@ void DRV88xx_SetCurrentPosition(drv88xx_config_t *config, int32_t position)
 
 void DRV88xx_SetSpeed(drv88xx_config_t *config, float speed)
 {
-    if (speed == config->speed)
-        return;
-    speed = (speed > config->max_speed) ? config->max_speed : ((speed < -config->max_speed) ? -config->max_speed : speed);
-    if (speed == 0.0f)
-        config->step_interval_us = 0;
-    else
-    {
-        config->step_interval_us = (uint32_t)fabsf(1000000.0f / (speed*config->MICROSTEPS));
-        config->direction = (speed > 0.0f) ? DIRECTION_CW : DIRECTION_CCW;
-    }
-    config->speed = speed;
+  if (speed == config->speed)
+    return;
+  speed = (speed > config->max_speed) ? config->max_speed : ((speed < -config->max_speed) ? -config->max_speed : speed);
+  if (speed == 0.0f)
+    config->step_interval_us = 0;
+  else
+  {
+    config->step_interval_us = (uint32_t)fabsf(1000000.0f / speed);
+    config->direction = (speed > 0.0f) ? DIRECTION_CW : DIRECTION_CCW;
+  }
+  config->speed = speed;
 }
 
 void DRV88xx_SetMaxSpeed(drv88xx_config_t *config, float max_speed)
@@ -139,12 +140,12 @@ void DRV88xx_SetMaxSpeed(drv88xx_config_t *config, float max_speed)
     else if (config->max_speed != max_speed)
     {
         config->max_speed = max_speed;
-        config->cmin = 1000000.0f / (max_speed * config->MICROSTEPS);
+        config->cmin = 1000000.0f / max_speed;
         // recompute n from current speed and adjust speed if accelerating or cruising
         if (config->n > 0)
         {
             config->n = (int32_t)((config->speed * config->speed) / (2.0f * config->acceleration)); // Equation 16
-            computeNewSpeed(config);
+            compute_new_speed(config);
         }
     }
 }
@@ -157,19 +158,19 @@ void DRV88xx_SetAcceleration(drv88xx_config_t *config, float acceleration)
     if (config->acceleration != acceleration)
     {
         config->n = (int32_t)((float)config->n * (config->acceleration / acceleration));
-        config->c0 = 0.676f * sqrtf(2.0f / (acceleration * config->MICROSTEPS)) * 1000000.0f;
+        config->c0 = 0.676f * sqrtf(2.0f / acceleration) * 1000000.0f;
         config->acceleration = acceleration;
-        computeNewSpeed(config);
+        compute_new_speed(config);
     }
 }
 
 void DRV88xx_MoveTo(drv88xx_config_t *config, int32_t target_pos)
 {
-  int32_t target_usteps = target_pos * config->MICROSTEPS;
+  int32_t target_usteps = target_pos;
   if (target_usteps != config->target_pos)
   {
       config->target_pos = target_usteps;
-      computeNewSpeed(config);
+      compute_new_speed(config);
   }
 }
 
@@ -181,24 +182,30 @@ void DRV88xx_Move(drv88xx_config_t *config, int32_t relative)
 bool DRV88xx_Run(drv88xx_config_t *config)
 {
     if (DRV88xx_RunSpeed(config))
-        computeNewSpeed(config);
-    return (config->speed != 0.0f) || distTo(config) != 0;
+        compute_new_speed(config);
+    return (config->speed != 0.0f) || dist_to_go(config) != 0;
 }
 
 bool DRV88xx_RunSpeed(drv88xx_config_t *config)
 {
-  if (config->step_interval_us == 0)
-      return false; // No movement required
+  if (!config->step_interval_us) return false; 
 
   uint32_t time_since_last_step = get_tim_us(config) - config->last_step_time;
   if (time_since_last_step < config->step_interval_us)
-      return false; // Not time for the next step yet
+    return false; // Not time for the next step yet
 
+  // Set direction pin, considering inversion
+  HAL_GPIO_WritePin(
+    config->dir_port, 
+    config->dir_pin, 
+    (config->direction == DIRECTION_CW) ^ config->dir_inverted ? GPIO_PIN_SET : GPIO_PIN_RESET
+  );
+  
   // Time to step
   if (config->direction == DIRECTION_CW)
-      config->current_pos++;
+    config->current_pos++;
   else
-      config->current_pos--;
+    config->current_pos--;
 
   // Pulse the step pin
   HAL_GPIO_WritePin(config->step_port, config->step_pin, GPIO_PIN_SET);
@@ -220,7 +227,7 @@ bool DRV88xx_RunSpeedToPosition(drv88xx_config_t *config)
     if (config->target_pos == config->current_pos)
         return false; // Already at position
     if (config->target_pos > config->current_pos)
-        config->direction = DIRECTION_CW;
+      config->direction = DIRECTION_CW;
     else
         config->direction = DIRECTION_CCW;
     return DRV88xx_RunSpeed(config);

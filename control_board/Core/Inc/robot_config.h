@@ -26,6 +26,8 @@
 
 #define ADC_NUM_CHANNELS 3
 
+#define DRV8834_MICROSTEPS 16
+
 // -- Motor Handles ------------------------------------------------------------
 
 // DRV88xx stepper motor configurations

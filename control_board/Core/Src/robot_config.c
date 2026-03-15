@@ -42,7 +42,7 @@ stepper_ctrl_t stepper_underpass = {
             .step_pin = UNDERPASS_STEP_Pin,
             .dir_port = UNDERPASS_DIR_GPIO_Port,
             .dir_pin = UNDERPASS_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
+            .dir_inverted = true,
             .en_port = NULL,
             .en_pin = 0xFF,       // not used
             .en_inverted = false, // not used
@@ -51,7 +51,6 @@ stepper_ctrl_t stepper_underpass = {
             
             .tim = &htim7,
 
-            .MICROSTEPS = 16,
             // .steps_per_rev = 100,
             .max_speed = 1000.0f, // TODO: set this to the actual max speed
             .acceleration = 500.0f, // TODO: set this to the actual acceleration
@@ -63,6 +62,7 @@ stepper_ctrl_t stepper_underpass = {
         .last_state = false,
         .debounce_count = 0,
     },
+    .MICROSTEPS = DRV8834_MICROSTEPS,
 };
 
 // DC motor control structs

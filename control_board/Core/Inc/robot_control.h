@@ -37,6 +37,7 @@ typedef struct {
   drv88xx_config_t *config;
   gpio_sensor_t *limit_sw;
   bool limit_triggered;
+  uint8_t MICROSTEPS;
 } stepper_ctrl_t;
 
 typedef struct {

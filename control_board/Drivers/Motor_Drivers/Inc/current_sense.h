@@ -5,9 +5,6 @@
 
 #include <stdbool.h>
 
-#define CURRENT_SENSE_ADC_RESOLUTION 4096.0f // 12-bit ADC
-#define CURRENT_SENSE_VREF_MV 3300.0f // Reference voltage in mill
-
 typedef struct {
     ADC_HandleTypeDef *adc_instance; // ADC instance (e.g., ADC1)
     unsigned long adc_index;      // ADC channel for current sensing

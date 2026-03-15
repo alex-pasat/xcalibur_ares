@@ -49,8 +49,6 @@ typedef struct
 
     TIM_HandleTypeDef *tim; // Timer used for step timing
 
-    uint8_t MICROSTEPS;
-
     // absolute current position in steps
     int32_t current_pos; // Steps
 
@@ -71,8 +69,7 @@ typedef struct
     // The last step time in microseconds
     uint32_t last_step_time;
 
-
-    uint32_t n;     // The step counter for speed calculations
+    int32_t n;     // The step counter for speed calculations
     float c0;       // Initial step size in microseconds
     float cn;       // Last step size in microseconds
     float cmin;     // Min step size in microseconds based on maxSpeed
