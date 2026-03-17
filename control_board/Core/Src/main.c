@@ -83,7 +83,6 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-static volatile uint8_t flag_1ms;
 static volatile uint8_t div_10ms;
 static volatile uint8_t flag_10ms;
 
@@ -139,10 +138,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim->Instance == TIM6) {
 
-    flag_1ms = 1;
-    div_10ms++;
-    if (div_10ms >= 10) {
-      div_10ms = 0;
+    // 1 ms update
+    StepperCtrl_Run(&stepper_underpass);
+    MotorCtrl_Update(&dc_yaw);
+    MotorCtrl_Update(&dc_pitch);
+    MotorCtrl_Update(&dc_roll);
+    MotorCtrl_Update(&clamp);
+
+    // 10 ms update
+    if (++div_10ms >= 10) {
+      div_10ms  = 0;
       flag_10ms = 1;
     }
   }
@@ -197,25 +202,25 @@ int main(void)
   MX_USB_Device_Init();
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_Base_Start_IT(&htim6);
   HAL_TIM_Base_Start(&htim7);
   RobotConfig_Init();
   HAL_Delay(100);
-  
-  // // TODO: decide if we should wait for USB connection before doing anything
-  // while (!CDC_IsConnected()) {
-  //   HAL_Delay(100);
-  // }
 
-  // // for testing, await USB message (any message) before starting main loop
-  // extern volatile uint8_t usb_rx_flag;
-  // while (!usb_rx_flag) {
-  //   HAL_Delay(100);
-  // }
+  #if 0
+  // for testing, await USB message (any message) before starting main loop
+  extern volatile uint8_t usb_rx_flag;
+  while (!usb_rx_flag) {
+    HAL_Delay(100);
+  }
+  #endif
 
-  // StepperCtrl_SetTarget(&stepper_underpass, 2000);
-  DRV88xx_SetSpeed(stepper_underpass.config, 1000.0f);
-  
-  // RobotState_Init();
+  // DRV8251_SetSpeed(dc_yaw.drv, 0.5f);
+  // DRV8251_SetSpeed(dc_pitch.drv, 0.5f);
+  // DRV8251_SetSpeed(dc_roll.drv, 0.5f);
+  // DRV8251_SetSpeed(clamp.drv, 0.5f);
+
+  RobotState_Init();
 
   /* USER CODE END 2 */
 
@@ -227,22 +232,10 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-    // StepperCtrl_Run(&stepper_underpass);
-    DRV88xx_RunSpeed(stepper_underpass.config);
-
-    // if (flag_1ms) {
-    //   flag_1ms = 0;
-    //   StepperCtrl_Run(&stepper_underpass);
-    //   MotorCtrl_Update(&dc_yaw);
-    //   MotorCtrl_Update(&dc_pitch);
-    //   MotorCtrl_Update(&dc_roll);
-    //   MotorCtrl_Update(&clamp);
-    // }
-
-    // if (flag_10ms) {
-    //   flag_10ms = 0;
-    //   RobotState_Tick();
-    // }
+    if (flag_10ms) {
+      flag_10ms = 0;
+      RobotState_Tick();
+    }
   }
   /* USER CODE END 3 */
 }

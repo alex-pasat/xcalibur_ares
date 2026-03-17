@@ -22,7 +22,6 @@
 #include "usbd_cdc_if.h"
 
 /* USER CODE BEGIN INCLUDE */
-
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -94,9 +93,9 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-extern uint8_t usb_rx_buf[64];
-extern volatile uint8_t usb_rx_flag;
-extern volatile uint32_t usb_rx_len;
+
+tiny_ring_buffer_t usb_rx_ring_buf;
+usb_rx_packet_t usb_rx_packets[USB_RING_BUF_SIZE];
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -158,6 +157,7 @@ static int8_t CDC_Init_FS(void)
   /* Set Application Buffers */
   USBD_CDC_SetTxBuffer(&hUsbDeviceFS, UserTxBufferFS, 0);
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, UserRxBufferFS);
+  tiny_ring_buffer_init(&usb_rx_ring_buf, usb_rx_packets, sizeof(usb_rx_packet_t), USB_RING_BUF_SIZE);
   return (USBD_OK);
   /* USER CODE END 3 */
 }
@@ -264,17 +264,11 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-  if (*Len < 64) {
-      // 2. Fast copy the data into our global buffer
-      memcpy(usb_rx_buf, Buf, *Len);
-      usb_rx_buf[*Len] = '\0'; // Null-terminate to make string reading easy
-      
-      // 3. Record the length and set the flag
-      usb_rx_len = *Len;
-      usb_rx_flag = 1;
-  }
+  usb_rx_packet_t pkt;
+  memcpy(pkt.buf, Buf, *Len);
+  pkt.len = *Len;
+  tiny_ring_buffer_insert(&usb_rx_ring_buf, &pkt);
 
-  // 4. Prime the USB hardware to be ready to receive the NEXT packet
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
   

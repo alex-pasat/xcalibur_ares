@@ -31,7 +31,7 @@
 #include "usbd_cdc.h"
 
 /* USER CODE BEGIN INCLUDE */
-
+#include "tiny_ring_buffer.h"
 /* USER CODE END INCLUDE */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -53,6 +53,8 @@
 #define APP_TX_DATA_SIZE  2048
 /* USER CODE BEGIN EXPORTED_DEFINES */
 
+#define USB_RING_BUF_SIZE 8
+#define USB_RX_BUF_SIZE 64
 /* USER CODE END EXPORTED_DEFINES */
 
 /**
@@ -65,6 +67,11 @@
   */
 
 /* USER CODE BEGIN EXPORTED_TYPES */
+
+typedef struct {
+  uint8_t buf[USB_RX_BUF_SIZE];
+  uint16_t len;
+} usb_rx_packet_t;
 
 /* USER CODE END EXPORTED_TYPES */
 
