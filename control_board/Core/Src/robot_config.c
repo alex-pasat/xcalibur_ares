@@ -4,96 +4,33 @@
  * structs for each motor, and any other global configuration variables for the
  * robot.
  */
- #include "robot_config.h"
- #include "main.h"
+
+#include "robot_config.h"
+#include "main.h"
 #include "drv8251.h"
 #include "encoder.h"
-#include "qpid.h"
 #include "robot_control.h"
-#include "stm32g4xx.h"
-#include "stm32g4xx_hal_adc.h"
-#include "stm32g4xx_hal_adc_ex.h"
-#include "stm32g4xx_hal_tim.h"
 
-#define DRV88xx_MAX_SPD 1000.0f
-#define DRV88xx_ACCEL 50.0f
+#include "qpid.h"
+#include "stm32g491xx.h"
+#include "tiny_ring_buffer.h"
 
-#define TIMER_FREQ_HZ 170000000 // SYSCLK Frequency
-#define TIMER_PSC 0
-#define TIMER_PWM_FREQ_HZ 50000 // Desired PWM frequency for DRV8251
+#include <string.h>
 
-// TODO: should this be hardcoded or computed based on the timer configuration?
-#define CONTROL_TIME_STEP_S 0.01f // 10 ms control loop period
+// -- PV Definitions ----------------------------------------------------------
 
-// Gear Ratios TODO: set these to the actual gear ratios
-#define GEAR_RATIO_ROLL 50.0f
+volatile uint16_t adc_dma_buf[ADC_NUM_CHANNELS];
 
-// size of word for ADC DMA buffer
-#define ADC_BUFFER_SIZE 7
-volatile uint16_t adc_dma_buf[ADC_BUFFER_SIZE] = {0};
+uint8_t spi_rx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_rx_buf;
 
-// Stepper motor configurations
-#if 0
-stepper_ctrl_t stepper_spool = {
-    .config =
-        &(drv88xx_config_t){
-            .step_port = SPOOL_STEP_GPIO_Port,
-            .step_pin = SPOOL_STEP_Pin,
-            .dir_port = SPOOL_DIR_GPIO_Port,
-            .dir_pin = SPOOL_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
-            .max_speed = DRV88xx_MAX_SPD,
-            .acceleration = DRV88xx_ACCEL,
-            .en_port = NULL,
-            .en_pin = 0xFF,       // not used
-            .en_inverted = false, // not used
-            .nfault_port = NULL,
-            .nfault_pin = 0xFF, // not used
-        },
-    .limit_port = NULL,
-    .limit_pin = 0xFF, // not used
-};
+uint8_t spi_tx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_tx_buf;
 
-stepper_ctrl_t stepper_raise1 = {
-    .config =
-        &(drv88xx_config_t){
-            .step_port = RAISE1_STEP_GPIO_Port,
-            .step_pin = RAISE1_STEP_Pin,
-            .dir_port = RAISE1_DIR_GPIO_Port,
-            .dir_pin = RAISE1_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
-            .max_speed = DRV88xx_MAX_SPD,
-            .acceleration = DRV88xx_ACCEL,
-            .en_port = NULL,
-            .en_pin = 0xFF,       // not used
-            .en_inverted = false, // not used
-            .nfault_port = GPIOC,
-            .nfault_pin = GPIO_PIN_13,
-        },
-    .limit_port = NULL,
-    .limit_pin = 0xFF, // not used
-};
 
-stepper_ctrl_t stepper_raise2 = {
-    .config =
-        &(drv88xx_config_t){
-            .step_port = RAISE2_STEP_GPIO_Port,
-            .step_pin = RAISE2_STEP_Pin,
-            .dir_port = RAISE2_DIR_GPIO_Port,
-            .dir_pin = RAISE2_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
-            .max_speed = DRV88xx_MAX_SPD,
-            .acceleration = DRV88xx_ACCEL,
-            .en_port = NULL,
-            .en_pin = 0xFF,       // not used
-            .en_inverted = false, // not used   
-            .nfault_port = GPIOC,
-            .nfault_pin = GPIO_PIN_11,
-        },
-    .limit_port = NULL,
-    .limit_pin = 0xFF, // not used
-};
-#endif
+// -- Stepper Configurations --------------------------------------------------
+
+extern TIM_HandleTypeDef htim7;
 
 stepper_ctrl_t stepper_underpass = {
     .config =
@@ -102,40 +39,28 @@ stepper_ctrl_t stepper_underpass = {
             .step_pin = UNDERPASS_STEP_Pin,
             .dir_port = UNDERPASS_DIR_GPIO_Port,
             .dir_pin = UNDERPASS_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
-            .max_speed = DRV88xx_MAX_SPD,
-            .acceleration = DRV88xx_ACCEL,
+            .dir_inverted = true,
             .en_port = NULL,
             .en_pin = 0xFF,       // not used
             .en_inverted = false, // not used
             .nfault_port = NULL,
             .nfault_pin = 0xFF, // not used
-        },
-    .limit_port = GPIOE,
-    .limit_pin = GPIO_PIN_9,
-};
+            
+            .tim = &htim7,
 
-#if 0
-stepper_ctrl_t stepper_bevel = {
-    .config =
-        &(drv88xx_config_t){
-            .step_port = BEVEL_STEP_GPIO_Port,
-            .step_pin = BEVEL_STEP_Pin,
-            .dir_port = BEVEL_DIR_GPIO_Port,
-            .dir_pin = BEVEL_DIR_Pin,
-            .dir_inverted = false, // TODO: check wiring and set this correctly
-            .max_speed = DRV88xx_MAX_SPD,
-            .acceleration = DRV88xx_ACCEL,
-            .en_port = NULL,
-            .en_pin = 0xFF,       // not used
-            .en_inverted = false, // not used
-            .nfault_port = NULL,
-            .nfault_pin = 0xFF, // not used
+            // .steps_per_rev = 100,
+            .max_speed = 1000.0f, // TODO: set this to the actual max speed
+            .acceleration = 500.0f, // TODO: set this to the actual acceleration
         },
-    .limit_port = GPIOE,
-    .limit_pin = GPIO_PIN_11,
+    .limit_sw = &(gpio_sensor_t){
+        .port = GPIOE,
+        .pin = GPIO_PIN_9,
+        .threshold = 5,
+        .last_state = false,
+        .debounce_count = 0,
+    },
+    .MICROSTEPS = DRV8834_MICROSTEPS,
 };
-#endif
 
 // DC motor control structs
 
@@ -166,6 +91,7 @@ extern TIM_HandleTypeDef htim4;
 extern TIM_HandleTypeDef htim15;
 extern TIM_HandleTypeDef htim16;
 extern TIM_HandleTypeDef htim17;
+extern TIM_HandleTypeDef htim20;
 
 drv8251_config_t dc_pitch_drv = {
     .in1_port = PITCH_M_IN_B_GPIO_Port,
@@ -177,6 +103,8 @@ drv8251_config_t dc_pitch_drv = {
     .in2_tim = &htim2,
     .in2_tim_channel = TIM_CHANNEL_2,
     .dir_inverted = false, // TODO: check wiring and set this correctly
+    .MIN_RPM = 0, // TODO: set these
+    .MAX_RPM = 1500,
 };
 
 drv8251_config_t dc_roll_drv = {
@@ -203,6 +131,8 @@ drv8251_config_t dc_yaw_drv = {
     .in2_tim = &htim1,
     .in2_tim_channel = TIM_CHANNEL_4,
     .dir_inverted = false, // TODO: check wiring and set this correctly
+    .MIN_RPM = 0, // TODO: set these
+    .MAX_RPM = 1500,
 };
 
 drv8251_config_t clamp_drv = {
@@ -215,47 +145,9 @@ drv8251_config_t clamp_drv = {
     .in2_tim = &htim15,
     .in2_tim_channel = TIM_CHANNEL_2,
     .dir_inverted = false, // TODO: check wiring and set this correctly
+    .MIN_RPM = 0, // TODO: set these
+    .MAX_RPM = 1500,
 };
-
-#if 0
-drv8251_config_t tension_drv = {
-    .in1_port = TENSION_M_IN_B_GPIO_Port,
-    .in1_pin = TENSION_M_IN_B_Pin,
-    .in1_tim = &htim4,
-    .in1_tim_channel = TIM_CHANNEL_2,
-    .in2_port = TENSION_M_IN_A_GPIO_Port,
-    .in2_pin = TENSION_M_IN_A_Pin,
-    .in2_tim = &htim4,
-    .in2_tim_channel = TIM_CHANNEL_1,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-};
-
-drv8251_config_t sclamp1_drv = {
-    .in1_port = SCLAMP1_M_IN_B_GPIO_Port,
-    .in1_pin = SCLAMP1_M_IN_B_Pin,
-    .in1_tim = &htim16,
-    .in1_tim_channel = TIM_CHANNEL_1,
-    .in2_port = SCLAMP1_M_IN_A_GPIO_Port,
-    .in2_pin = SCLAMP1_M_IN_A_Pin,
-    .in2_tim = &htim17,
-    .in2_tim_channel = TIM_CHANNEL_1,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-};
-
-// Note: SCLAMP2 shares the same timer channels as PITCH, so avoid using them at
-// the same time
-drv8251_config_t sclamp2_drv = {
-    .in1_port = SCLAMP2_M_IN_B_GPIO_Port,
-    .in1_pin = SCLAMP2_M_IN_B_Pin,
-    .in1_tim = &htim2,
-    .in1_tim_channel = TIM_CHANNEL_4,
-    .in2_port = SCLAMP2_M_IN_A_GPIO_Port,
-    .in2_pin = SCLAMP2_M_IN_A_Pin,
-    .in2_tim = &htim2,
-    .in2_tim_channel = TIM_CHANNEL_3,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-};
-#endif
 
 // Encoder configurations
 enc_config_t enc_pitch = {
@@ -290,46 +182,28 @@ enc_config_t enc_clamp = {
     .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
 };
 
-#if 0
-enc_config_t enc_tension = {
-    .enc_a_port = GPIOB,
-    .enc_a_pin = GPIO_PIN_15,
-    .enc_b_port = GPIOB,
-    .enc_b_pin = GPIO_PIN_14,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
-};
-
-enc_config_t enc_sclamp1 = {
-    .enc_a_port = GPIOC,
-    .enc_a_pin = GPIO_PIN_9,
-    .enc_b_port = GPIOC,
-    .enc_b_pin = GPIO_PIN_8,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
-};
-
-enc_config_t enc_sclamp2 = {
-    .enc_a_port = GPIOD,
-    .enc_a_pin = GPIO_PIN_15,
-    .enc_b_port = GPIOD,
-    .enc_b_pin = GPIO_PIN_14,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
-};
-#endif
-
 extern ADC_HandleTypeDef hadc1;
 
 motor_ctrl_t dc_pitch = {
     .drv = &dc_pitch_drv,
     .enc = &enc_pitch,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_13,
+    .limit_sw = &(gpio_sensor_t){
+      .port = NULL, // no limit switch
+      .pin = 0xFF,
+    },
+    .hall_effect = &(gpio_sensor_t){
+      .port = GPIOE,
+      .pin = GPIO_PIN_13,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
     .adc_port = ADC_PITCH_GPIO_Port,
     .adc_pin = ADC_PITCH_Pin,
     .curr_config = {
         .adc_instance = &hadc1,
-        .adc_channel = ADC_CHANNEL_6,
+        .adc_index = 2, // ADC RANK 3
         .shunt_resistor_mohm = 24,
     },
 };
@@ -338,86 +212,79 @@ motor_ctrl_t dc_roll = {
     .drv = &dc_roll_drv,
     .enc = &enc_roll,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_14,
+    .limit_sw = &(gpio_sensor_t){
+      .port = NULL, // no limit switch
+      .pin = 0xFF,
+    },
+    .hall_effect = &(gpio_sensor_t) {
+      .port = GPIOE,
+      .pin = GPIO_PIN_14,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
+    .adc_port = NULL,
+    .adc_pin = 0xFF,
 };
 
 motor_ctrl_t dc_yaw = {
     .drv = &dc_yaw_drv,
     .enc = &enc_yaw,
     .pid = {0},
-    .enabled = false,
-    .hall_port = GPIOE,
-    .hall_pin = GPIO_PIN_15,
+    .limit_sw = &(gpio_sensor_t){
+      .port = NULL, // no limit switch
+      .pin = 0xFF,
+    },
+    .hall_effect = &(gpio_sensor_t) {
+      .port = GPIOE,
+      .pin = GPIO_PIN_15,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
+    .adc_port = NULL,
+    .adc_pin = 0xFF,
 };
 
 motor_ctrl_t clamp = {
     .drv = &clamp_drv,
     .enc = &enc_clamp,
     .pid = {0},
-    .enabled = false,
+    .limit_sw = &(gpio_sensor_t){
+      .port = NULL, // no limit switch
+      .pin = 0xFF,
+    },
+    .hall_effect = &(gpio_sensor_t){
+      .port = EXTRA_HALL_GPIO_Port,
+      .pin = EXTRA_HALL_Pin,
+      .threshold = 5,
+      .last_state = false,
+      .debounce_count = 0,
+    },
     .adc_port = ADC_KNIFECLAMP_GPIO_Port,
     .adc_pin = ADC_KNIFECLAMP_Pin,
     .curr_config = {
         .adc_instance = &hadc1,
-        .adc_channel = ADC_CHANNEL_1,
+        .adc_index = 0, // ADC RANK 1
         .shunt_resistor_mohm = 82,
     },
 };
 
-#if 0
-motor_ctrl_t tension = {
-    .drv = &tension_drv,
-    // .enc = &enc_tension,
-    .pid = {0},
-    .enabled = false,
-};
-
-motor_ctrl_t sclamp1 = {
-    .drv = &sclamp1_drv,
-    // .enc = &enc_sclamp1,
-    .pid = {0},
-    .enabled = false,
-};
-
-motor_ctrl_t sclamp2 = {
-    .drv = &sclamp2_drv,
-    // .enc = &enc_sclamp2,
-    .pid = {0},
-    .enabled = false,
-};
-#endif
-
 void RobotConfig_Init(void) {
+  // Initialize ring buffers
+  memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
+  memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
+  
+  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
+  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  
+
   // Init DMA
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)(uint16_t*)adc_dma_buf, ADC_BUFFER_SIZE);
+  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)(uint16_t*)adc_dma_buf, ADC_NUM_CHANNELS);
 
   // Initialize stepper motor configurations
-#if 0
-  DRV88xx_Init(stepper_spool.config);
-  DRV88xx_Init(stepper_raise1.config);
-  DRV88xx_Init(stepper_raise2.config);
-  DRV88xx_Init(stepper_bevel.config);
-  #endif
-  DRV88xx_Init(stepper_underpass.config);
 
-  Encoder_Init(&enc_pitch);
-  Encoder_Init(&enc_roll);
-  Encoder_Init(&enc_yaw);
-  Encoder_Init(&enc_clamp);
-  #if 0
-  Encoder_Init(&enc_tension);
-  Encoder_Init(&enc_sclamp1);
-  Encoder_Init(&enc_sclamp2);
-  #endif
-  // qPID_BindAutoTuning(&dc_roll.pid, &at_pitch);
-  // qPID_BindAutoTuning(&dc_roll.pid, &at_roll);
-  // qPID_BindAutoTuning(&dc_yaw.pid, &at_yaw);
-  // qPID_BindAutoTuning(&clamp.pid, &at_clamp);
-
-  // qPID_EnableAutoTuning(&dc_roll.pid, 5000);
+  StepperCtrl_Init(&stepper_underpass, stepper_underpass.config);
 
   MotorCtrl_Init(&dc_pitch, &dc_pitch_drv, &enc_pitch, &dc_pitch.pid,
       pid_gains_pitch, CONTROL_TIME_STEP_S);
@@ -427,12 +294,4 @@ void RobotConfig_Init(void) {
       pid_gains_yaw, CONTROL_TIME_STEP_S);
   MotorCtrl_Init(&clamp, &clamp_drv, &enc_clamp, &clamp.pid,
       pid_gains_clamp, CONTROL_TIME_STEP_S);
-#if 0
-  MotorCtrl_Init(&tension, &tension_drv, NULL, &tension.pid,
-      pid_gains_tension, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&sclamp1, &sclamp1_drv, NULL,
-      &sclamp1.pid, pid_gains_sclamp1, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&sclamp2, &sclamp2_drv, NULL,
-      &sclamp2.pid, pid_gains_sclamp2, CONTROL_TIME_STEP_S);
-#endif
 }

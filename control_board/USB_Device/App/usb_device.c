@@ -56,6 +56,19 @@ extern USBD_DescriptorsTypeDef CDC_Desc;
  * -- Insert your external function declaration here --
  */
 /* USER CODE BEGIN 1 */
+// Wrapper function to safely send strings
+
+void USB_SendString(const char *str) {
+    // Attempt to send. If the USB is busy, wait and try again.
+    while (CDC_Transmit_FS((uint8_t*)str, strlen(str)) == USBD_BUSY) {
+        // Optional: add a tiny delay or a timeout counter here so it doesn't hang forever 
+        // if the USB cable is abruptly unplugged.
+    }
+}
+
+uint8_t CDC_IsConnected(void) {
+    return (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED);
+}
 
 /* USER CODE END 1 */
 
@@ -66,7 +79,8 @@ extern USBD_DescriptorsTypeDef CDC_Desc;
 void MX_USB_Device_Init(void)
 {
   /* USER CODE BEGIN USB_Device_Init_PreTreatment */
-
+  USB->BCDR &= ~USB_BCDR_DPPU;
+  HAL_Delay(100);
   /* USER CODE END USB_Device_Init_PreTreatment */
 
   /* Init Device Library, add supported class and start the library. */

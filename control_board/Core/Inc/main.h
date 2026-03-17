@@ -75,8 +75,6 @@ void Error_Handler(void);
 #define KNIFECLAMP_M_IN_B_GPIO_Port GPIOF
 #define KNIFECLAMP_M_IN_A_Pin GPIO_PIN_10
 #define KNIFECLAMP_M_IN_A_GPIO_Port GPIOF
-#define ADC_TENSION_Pin GPIO_PIN_0
-#define ADC_TENSION_GPIO_Port GPIOC
 #define ADC_PITCH_Pin GPIO_PIN_1
 #define ADC_PITCH_GPIO_Port GPIOC
 #define YAW_M_IN_B_Pin GPIO_PIN_2
