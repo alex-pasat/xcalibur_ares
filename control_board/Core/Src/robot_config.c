@@ -27,9 +27,6 @@ tiny_ring_buffer_t spi_rx_buf;
 uint8_t spi_tx_store[SPI_BUF_SIZE];
 tiny_ring_buffer_t spi_tx_buf;
 
-uint8_t usb_rx_buf[64];
-volatile uint8_t usb_rx_flag = 0;
-volatile uint32_t usb_rx_len = 0;
 
 // -- Stepper Configurations --------------------------------------------------
 
@@ -277,7 +274,6 @@ void RobotConfig_Init(void) {
   // Initialize ring buffers
   memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
   memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
-  memset(&usb_rx_buf, 0, sizeof(usb_rx_buf));
   
   tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
   tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  

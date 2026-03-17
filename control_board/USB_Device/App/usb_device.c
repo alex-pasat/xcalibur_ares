@@ -79,7 +79,8 @@ uint8_t CDC_IsConnected(void) {
 void MX_USB_Device_Init(void)
 {
   /* USER CODE BEGIN USB_Device_Init_PreTreatment */
-
+  USB->BCDR &= ~USB_BCDR_DPPU;
+  HAL_Delay(100);
   /* USER CODE END USB_Device_Init_PreTreatment */
 
   /* Init Device Library, add supported class and start the library. */

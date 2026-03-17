@@ -112,6 +112,8 @@ void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
 
 void MotorCtrl_SetTarget(motor_ctrl_t *ctrl, float target_rps);
 
+void MotorCtrl_Stop(motor_ctrl_t *ctrl);
+
 void MotorCtrl_Enable(motor_ctrl_t *ctrl);
 
 void MotorCtrl_Disable(motor_ctrl_t *ctrl);

@@ -51,6 +51,7 @@ typedef enum {
   STATE_TOP,
 
   STATE_AWAITING_KNIFE_SELECTION,
+  STATE_AWAITING_RPI_CONNECT,
   STATE_AWAITING_KNIFE_INPUT,
   STATE_RECV_HEADER,
   STATE_RECV_YAW,
@@ -77,6 +78,7 @@ typedef enum {
 static tiny_hsm_result_t state_top(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 
 static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
+static tiny_hsm_result_t state_await_rpi_connect(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 static tiny_hsm_result_t state_await_knife_input(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 static tiny_hsm_result_t state_await_geometry_header(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 static tiny_hsm_result_t state_await_geometry_yaw(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
@@ -104,6 +106,7 @@ static robot_state_id_t get_current_state(void) {
   if (robot_hsm.current == (tiny_hsm_state_t)state_top) return STATE_TOP;
 
   if (robot_hsm.current == (tiny_hsm_state_t)state_await_knife_selection) return STATE_AWAITING_KNIFE_SELECTION;
+  if (robot_hsm.current == (tiny_hsm_state_t)state_await_rpi_connect) return STATE_AWAITING_RPI_CONNECT;
   if (robot_hsm.current == (tiny_hsm_state_t)state_await_knife_input) return STATE_AWAITING_KNIFE_INPUT;
   if (robot_hsm.current == (tiny_hsm_state_t)state_await_geometry_header) return STATE_RECV_HEADER;
   if (robot_hsm.current == (tiny_hsm_state_t)state_await_geometry_yaw) return STATE_RECV_YAW;
@@ -128,6 +131,7 @@ static const tiny_hsm_state_descriptor_t robot_hsm_states[] = {
     {.state = (tiny_hsm_state_t)state_top, .parent = (tiny_hsm_state_t)tiny_hsm_no_parent},
     
     {.state = (tiny_hsm_state_t)state_await_knife_selection, .parent = (tiny_hsm_state_t)state_top},
+    {.state = (tiny_hsm_state_t)state_await_rpi_connect, .parent = (tiny_hsm_state_t)state_top},
     {.state = (tiny_hsm_state_t)state_await_knife_input, .parent = (tiny_hsm_state_t)state_top},
     {.state = (tiny_hsm_state_t)state_await_geometry_header, .parent = (tiny_hsm_state_t)state_top},
     {.state = (tiny_hsm_state_t)state_await_geometry_yaw, .parent = (tiny_hsm_state_t)state_top},
@@ -201,38 +205,61 @@ static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm,
 
 // -- RPI REQUESTS ------------------------------------------------------------
 
+static tiny_hsm_result_t state_await_rpi_connect(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data) {
+  switch (signal) {
+    case tiny_hsm_signal_entry:
+      return tiny_hsm_result_signal_consumed;
+
+    case tiny_hsm_signal_exit:
+      return tiny_hsm_result_signal_consumed;
+
+    case SIG_RECEIVED_USB:
+      usb_rx_packet_t *pkt = (usb_rx_packet_t*)data;
+      if (pkt == NULL || pkt->len == 0) {
+        return tiny_hsm_result_signal_consumed;
+      }
+
+      // transition to await knife input
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+
+      return tiny_hsm_result_signal_consumed;
+
+    default:
+      return tiny_hsm_result_signal_deferred;
+  }
+}
+
 static tiny_hsm_result_t state_await_knife_input(tiny_hsm_t *hsm,
                                                      tiny_hsm_signal_t signal,
                                                      const void *data) {
   switch (signal) {
   case tiny_hsm_signal_entry:
+    // send start signal to RPI
+    USB_SendString("START\n");
     // clear USB buffer to prepare for new command
     tiny_ring_buffer_clear(&usb_rx_ring_buf);
-    USB_SendString("Awaiting knife input from USB.");
     return tiny_hsm_result_signal_consumed;
 
   case tiny_hsm_signal_exit:
     return tiny_hsm_result_signal_consumed;
 
   case SIG_RECEIVED_USB:
-    if (data == NULL || !tiny_ring_buffer_count(&usb_rx_ring_buf)) {
+    usb_rx_packet_t *pkt = (usb_rx_packet_t*)data;
+    if (pkt == NULL || pkt->len == 0) {
       return tiny_hsm_result_signal_consumed;
     }
 
-    // TODO: parse USB and decide next state based on command type
-    USB_SendString((const char*)data);
-
-    // if knife detected
-    if (0) {
-      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_clamping);
+    if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
+        strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+      // TODO: change this to go to different state (maybe add error state?) and work with HMI
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+      return tiny_hsm_result_signal_consumed;
     }
 
-    // if kinematics data received
-    if (0) {
-      // save kinematics data to appropriate PVs for use in movement state
-      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_moving);
-    }
-
+    if (strncmp((char*)pkt->buf, "KNIFE_DETECTED", pkt->len) == 0) {
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_geometry_header);
+    } 
+   
     return tiny_hsm_result_signal_consumed;
 
   default:
@@ -276,8 +303,8 @@ static tiny_hsm_result_t state_await_geometry_header(tiny_hsm_t *hsm, tiny_hsm_s
     case tiny_hsm_signal_entry:
       knife_parser.write_ptr       = (uint8_t*)&knife_parser.profile.header;
       knife_parser.bytes_remaining = sizeof(knife_header_t);
-      USB_SendString("Awaiting knife geometry header.");
-
+      USB_SendString("START_VISION\n");
+      tiny_ring_buffer_clear(&usb_rx_ring_buf);
       return tiny_hsm_result_signal_consumed;
 
     case tiny_hsm_signal_exit:
@@ -289,13 +316,16 @@ static tiny_hsm_result_t state_await_geometry_header(tiny_hsm_t *hsm, tiny_hsm_s
         return tiny_hsm_result_signal_consumed;
       }
 
+      if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
+        strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+      // TODO: change this to go to different state (maybe add error state?) and work with HMI
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+      return tiny_hsm_result_signal_consumed;
+      }
+
       feed_bytes(&knife_parser, pkt->buf, pkt->len);
 
       if (knife_parser.bytes_remaining == 0) {
-        char msg[100];
-        snprintf(msg, sizeof(msg), "Received knife geometry header. N = %d", knife_parser.profile.header.N);
-        USB_SendString(msg);
-
         tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_geometry_yaw);
       }
       return tiny_hsm_result_signal_consumed;
@@ -322,13 +352,16 @@ static tiny_hsm_result_t state_await_geometry_yaw(tiny_hsm_t *hsm, tiny_hsm_sign
       if (pkt == NULL || pkt->len == 0) {
         return tiny_hsm_result_signal_consumed;
       }
+      if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
+          strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+      // TODO: change this to go to different state (maybe add error state?) and work with HMI
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+      return tiny_hsm_result_signal_consumed;
+      }
+
       feed_bytes(&knife_parser, pkt->buf, pkt->len);
 
       if (knife_parser.bytes_remaining == 0) {
-        char msg[100];
-        snprintf(msg, sizeof(msg), "Received knife geometry yaw indices. N = %d", sizeof(knife_parser.profile.yaw_indices) / sizeof(double));
-        USB_SendString(msg);
-
         tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_geometry_ratios1);
       }
       return tiny_hsm_result_signal_consumed;
@@ -354,12 +387,16 @@ static tiny_hsm_result_t state_await_geometry_ratios1(tiny_hsm_t *hsm, tiny_hsm_
       if (pkt == NULL || pkt->len == 0) {
         return tiny_hsm_result_signal_consumed;
       }
+      if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
+          strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+      // TODO: change this to go to different state (maybe add error state?) and work with HMI
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+      return tiny_hsm_result_signal_consumed;
+      }
+
       feed_bytes(&knife_parser, pkt->buf, pkt->len);
 
       if (knife_parser.bytes_remaining == 0) {
-        char msg[100];
-        snprintf(msg, sizeof(msg), "Knife geometry ratios for side 1 received and parsed successfully. N = %d", sizeof(knife_parser.profile.ratios1) / (4 * sizeof(double)));
-        USB_SendString(msg);
         tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_geometry_ratios2);
       }
       return tiny_hsm_result_signal_consumed;
@@ -385,14 +422,19 @@ static tiny_hsm_result_t state_await_geometry_ratios2(tiny_hsm_t *hsm, tiny_hsm_
       if (pkt == NULL || pkt->len == 0) {
         return tiny_hsm_result_signal_consumed;
       }
+      if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
+          strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+        tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+        return tiny_hsm_result_signal_consumed;
+      }
+
       feed_bytes(&knife_parser, pkt->buf, pkt->len);
 
       if (knife_parser.bytes_remaining == 0) {
-        char msg[100];
-        snprintf(msg, sizeof(msg), "Knife geometry ratios for side 2 received and parsed successfully. N = %d", sizeof(knife_parser.profile.ratios2) / (4 * sizeof(double)));
-        USB_SendString(msg);
+        USB_SendString("GEOMETRY_DATA_RECEIVED\n");
+
         knife_parser.profile.ready = true;
-        tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_moving);
+        tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
       }
       return tiny_hsm_result_signal_consumed;
 
@@ -449,7 +491,7 @@ static tiny_hsm_result_t state_clamping(tiny_hsm_t *hsm, tiny_hsm_signal_t signa
 
       // send signal to USB task to notify knife is clamped and kinematics data can be sent
       // send here or is USB task?
-      USB_SendString((const char*)ROBOT_RPI_REQUEST_KINEMATICS);
+      // USB_SendString((const char*)ROBOT_RPI_REQUEST_KINEMATICS);
 
       tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_geometry_header);
       return tiny_hsm_result_signal_consumed;
@@ -530,7 +572,7 @@ void RobotState_Init(void) {
   // tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_knife_selection);
 
   // TODO: remove after testing
-  tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_geometry_header);
+  tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_rpi_connect);
   // tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_geometry_yaw);
 }
 
@@ -561,6 +603,7 @@ void RobotState_Tick(void) {
     }
     break;
 
+  case STATE_AWAITING_RPI_CONNECT:
   case STATE_AWAITING_KNIFE_INPUT:
   case STATE_RECV_HEADER:
   case STATE_RECV_YAW:

@@ -38,12 +38,6 @@ typedef enum {
   // TODO: add more commands as needed
 } robot_hmi_command_t;
 
-typedef enum {
-  ROBOT_RPI_CMD_NONE            = 0x00,
-  ROBOT_RPI_REQUEST_DETECT      = 0x01,
-  ROBOT_RPI_REQUEST_KINEMATICS  = 0x02,
-} robot_rpi_command_t;
-
 //-- Function Prototypes ------------------------------------------------------
 
 /**

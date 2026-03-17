@@ -108,6 +108,11 @@ void MotorCtrl_SetTarget(motor_ctrl_t *ctrl, float target_rps) {
   ctrl->target_rps = target_rps;
 }
 
+void MotorCtrl_Stop(motor_ctrl_t *ctrl) {
+  DRV8251_Coast(ctrl->drv);
+  qPID_Reset(&ctrl->pid);
+}
+
 void MotorCtrl_Enable(motor_ctrl_t *ctrl) { ctrl->enabled = true; }
 
 void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
@@ -123,7 +128,6 @@ void MotorCtrl_SetKnifeType(knife_type_t type) {
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {
   if (!ctrl->enabled) return;
 
-  
   // Read current speed from encoder
   float current_rps = Encoder_ComputeVelocity(ctrl->enc, ctrl->dt);
   
