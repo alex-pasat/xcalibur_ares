@@ -21,13 +21,6 @@
 
 volatile uint16_t adc_dma_buf[ADC_NUM_CHANNELS];
 
-uint8_t spi_rx_store[SPI_BUF_SIZE];
-tiny_ring_buffer_t spi_rx_buf;
-
-uint8_t spi_tx_store[SPI_BUF_SIZE];
-tiny_ring_buffer_t spi_tx_buf;
-
-
 // -- Stepper Configurations --------------------------------------------------
 
 extern TIM_HandleTypeDef htim7;
@@ -271,13 +264,6 @@ motor_ctrl_t clamp = {
 };
 
 void RobotConfig_Init(void) {
-  // Initialize ring buffers
-  memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
-  memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
-  
-  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
-  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  
-
   // Init DMA
   HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
   HAL_ADC_Start_DMA(&hadc1, (uint32_t*)(uint16_t*)adc_dma_buf, ADC_NUM_CHANNELS);

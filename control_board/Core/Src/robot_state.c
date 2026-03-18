@@ -25,11 +25,14 @@ volatile tiny_hsm_t robot_hsm;
 
 extern SPI_HandleTypeDef hspi1;
 
-static uint8_t spi_raw_rx;
-static uint8_t spi_raw_tx;
+uint8_t spi_rx_raw;
+uint8_t spi_tx_raw;
 
-extern tiny_ring_buffer_t spi_rx_buf;
-extern tiny_ring_buffer_t spi_tx_buf;
+uint8_t spi_rx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_rx_buf;
+
+uint8_t spi_tx_store[SPI_BUF_SIZE];
+tiny_ring_buffer_t spi_tx_buf;
 
 extern tiny_ring_buffer_t usb_rx_ring_buf;
 extern usb_rx_packet_t usb_rx_packets[USB_RING_BUF_SIZE];
@@ -182,8 +185,6 @@ static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm,
     return tiny_hsm_result_signal_consumed;
 
   case tiny_hsm_signal_exit:
-    // clear SPI buffer
-    tiny_ring_buffer_clear(&spi_rx_buf);
     return tiny_hsm_result_signal_consumed;
 
   case SIG_RECEIVED_SPI:
@@ -191,11 +192,17 @@ static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm,
       return tiny_hsm_result_signal_consumed;
     }
 
-    knife_type_t knife_type = (knife_type_t)*(const uint8_t*)data;
-    Ctrl_SetKnifeType(knife_type);
+    if (*(const uint8_t*)data == 0x20) {
+      // send confirmation back to HMI
+      tiny_ring_buffer_insert(&spi_tx_buf, (const uint8_t*)0x30);
+      return tiny_hsm_result_signal_consumed;
+    }
+
+    // knife_type_t knife_type = (knife_type_t)*(const uint8_t*)data;
+    // Ctrl_SetKnifeType(knife_type);
 
     // once we set knife type, wait for USB command that knife is seen
-    tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+    // tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
     return tiny_hsm_result_signal_consumed;
 
   default:
@@ -567,13 +574,16 @@ static tiny_hsm_result_t state_estop(tiny_hsm_t *hsm, tiny_hsm_signal_t sig,
 // -- State Machine Configuration ---------------------------------------------
 
 void RobotState_Init(void) {
-  HAL_SPI_TransmitReceive_IT(&hspi1, &spi_raw_tx, &spi_raw_rx, 1);
-  // TODO: either start here or start by homing
-  // tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_knife_selection);
+  // Initialize ring buffers
+  memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
+  memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
+  
+  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
+  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  
 
-  // TODO: remove after testing
-  tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_rpi_connect);
-  // tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_geometry_yaw);
+  HAL_SPI_TransmitReceive_IT(&hspi1, &spi_tx_raw, &spi_rx_raw, 1);
+
+  tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_knife_selection);
 }
 
 void RobotState_SendSignal(robot_signal_t sig, const void *data) {
@@ -595,11 +605,11 @@ void RobotState_Tick(void) {
     break;
 
   case STATE_AWAITING_KNIFE_SELECTION:
-    while (tiny_ring_buffer_count(&spi_rx_buf) > 0) {
+    if (tiny_ring_buffer_count(&spi_rx_buf) > 0) {
       uint8_t byte;
       tiny_ring_buffer_remove(&spi_rx_buf, &byte);
-      if (byte == ROBOT_HMI_CMD_NONE) continue; // ignore empty bytes
-      RobotState_SendSignal(SIG_RECEIVED_SPI, &byte);
+      if (byte != ROBOT_HMI_CMD_NONE)
+        RobotState_SendSignal(SIG_RECEIVED_SPI, &byte);
     }
     break;
 
@@ -610,7 +620,7 @@ void RobotState_Tick(void) {
   case STATE_RECV_RATIOS1:
   case STATE_RECV_RATIOS2:
     usb_rx_packet_t pkt;
-    while (tiny_ring_buffer_count(&usb_rx_ring_buf) > 0) {
+    if (tiny_ring_buffer_count(&usb_rx_ring_buf) > 0) {
       tiny_ring_buffer_remove(&usb_rx_ring_buf, &pkt);
       RobotState_SendSignal(SIG_RECEIVED_USB, &pkt);
     }
@@ -680,14 +690,14 @@ void RobotState_Tick(void) {
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
   if (hspi->Instance == SPI1) {
     // buffer the received byte into the SPI RX ring buffer
-    tiny_ring_buffer_insert(&spi_rx_buf, &spi_raw_rx);
-
+    tiny_ring_buffer_insert(&spi_rx_buf, &spi_rx_raw);
+    
     // pop next byte to transmit from the SPI TX ring buffer, or send empty byte if none
-    spi_raw_tx = ROBOT_HMI_CMD_NONE;
-    tiny_ring_buffer_remove(&spi_tx_buf, &spi_raw_tx);
+    spi_tx_raw = ROBOT_HMI_CMD_NONE;
+    tiny_ring_buffer_remove(&spi_tx_buf, &spi_tx_raw);
 
     // start next SPI transmit/receive
-    HAL_SPI_TransmitReceive_IT(hspi, &spi_raw_tx, &spi_raw_rx, 1);
+    HAL_SPI_TransmitReceive_IT(hspi, &spi_tx_raw, &spi_rx_raw, 1);
   }
 }
 
