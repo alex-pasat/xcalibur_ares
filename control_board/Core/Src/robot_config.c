@@ -320,4 +320,8 @@ void RobotConfig_Init(void) {
       pid_gains_yaw, CONTROL_TIME_STEP_S);
   MotorCtrl_Init(&clamp, &clamp_drv, &enc_clamp, &clamp.pid,
       pid_gains_clamp, CONTROL_TIME_STEP_S);
+
+  HAL_TIM_PWM_Start(led_strip.tim, led_strip.tim_channel);
+  HAL_TIM_PWM_Start(fan.tim, fan.tim_channel);
+  HAL_TIM_PWM_Start(pump.tim, pump.tim_channel);
 }

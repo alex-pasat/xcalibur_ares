@@ -246,10 +246,6 @@ int main(void)
   // Test_PID(&dc_pitch, "pitch", 1.0f);
   #endif
 
-  LED_PulseUpdate(&led_strip); // Initialize LED strip pulse
-  Fan_SetDuty(&fan, 0.5f); // Set fan duty cycle to 50%
-  Pump_SetDuty(&pump, 0.5f); // Set pump duty cycle to 50%
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
