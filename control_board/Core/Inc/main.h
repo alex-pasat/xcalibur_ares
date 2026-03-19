@@ -59,8 +59,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define FAN2_GPIO_Pin GPIO_PIN_2
-#define FAN2_GPIO_GPIO_Port GPIOE
+#define LED_STRIP_Pin GPIO_PIN_2
+#define LED_STRIP_GPIO_Port GPIOE
 #define FAN1_GPIO_Pin GPIO_PIN_3
 #define FAN1_GPIO_GPIO_Port GPIOE
 #define PUMP_M_IN_Pin GPIO_PIN_4
@@ -83,8 +83,6 @@ void Error_Handler(void);
 #define LASER_SIG_GPIO_Port GPIOB
 #define GPIO_1_Pin GPIO_PIN_1
 #define GPIO_1_GPIO_Port GPIOB
-#define PWM_1_Pin GPIO_PIN_2
-#define PWM_1_GPIO_Port GPIOB
 #define LOAD_CELL_OUT_Pin GPIO_PIN_7
 #define LOAD_CELL_OUT_GPIO_Port GPIOE
 #define LOAD_CELL_SCLK_Pin GPIO_PIN_8

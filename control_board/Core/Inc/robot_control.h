@@ -7,6 +7,7 @@
 #include "current_sense.h"
 #include "qpid.h"
 #include "stm32g491xx.h"
+#include "stm32g4xx_hal_tim.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -53,6 +54,37 @@ typedef struct {
   bool limit_triggered; // Whether the limit switch is currently triggered
   bool hall_triggered; // Whether the hall effect sensor is currently triggered
 } motor_ctrl_t;
+
+typedef struct {
+  GPIO_TypeDef *port;
+  uint32_t pin;
+
+  TIM_HandleTypeDef *tim;
+  uint32_t tim_channel;
+
+  float duty_cycle;
+  float duty_step;
+  bool increasing;
+} led_pulse_ctrl_t;
+
+typedef struct {
+  GPIO_TypeDef *port;
+  uint32_t pin;
+
+  TIM_HandleTypeDef *tim;
+  uint32_t tim_channel;
+} fan_ctrl_t;
+
+typedef struct {
+  GPIO_TypeDef *port;
+  uint32_t pin;
+
+  TIM_HandleTypeDef *tim;
+  uint32_t tim_channel;
+
+  current_sense_config_t current;
+  uint32_t MAX_CURRENT_mA;
+} pump_ctrl_t;
 
 // -- Stepper Control API -----------------------------------------------------
 
@@ -102,5 +134,20 @@ void MotorCtrl_Stop(motor_ctrl_t *ctrl);
 void MotorCtrl_Disable(motor_ctrl_t *ctrl);
 
 void MotorCtrl_Update(motor_ctrl_t *ctrl);
+
+// -- Other Control API -------------------------------------------------------
+
+void LED_SetDuty(led_pulse_ctrl_t *ctrl, float duty_cycle);
+
+/**
+ * @brief Update the LED pulse control with a new duty cycle
+ * @param ctrl Pointer to the LED pulse control structure
+ */
+void LED_PulseUpdate(led_pulse_ctrl_t *ctrl);
+
+void Fan_SetDuty(fan_ctrl_t *ctrl, float duty_cycle);
+
+// TODO: maybe add flow rate control
+void Pump_SetDuty(pump_ctrl_t *ctrl, float duty_cycle);
 
 #endif // ROBOT_CONTROL_H

@@ -44,7 +44,9 @@ extern motor_ctrl_t tension;
 extern motor_ctrl_t sclamp1;
 extern motor_ctrl_t sclamp2;
 
-// TODO add fan and pump control structs
+extern led_pulse_ctrl_t led_strip;
+extern fan_ctrl_t fan;
+extern pump_ctrl_t pump;
 
 // -- Function Prototypes -----------------------------------------------------
 

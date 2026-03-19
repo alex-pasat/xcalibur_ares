@@ -246,6 +246,10 @@ int main(void)
   // Test_PID(&dc_pitch, "pitch", 1.0f);
   #endif
 
+  LED_PulseUpdate(&led_strip); // Initialize LED strip pulse
+  Fan_SetDuty(&fan, 0.5f); // Set fan duty cycle to 50%
+  Pump_SetDuty(&pump, 0.5f); // Set pump duty cycle to 50%
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -261,6 +265,7 @@ int main(void)
     if (flag_10ms) {
       flag_10ms = 0;
       RobotState_Tick();
+      LED_PulseUpdate(&led_strip);
     } 
   }
   /* USER CODE END 3 */
@@ -567,9 +572,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
+  htim3.Init.Prescaler = 84;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 3399;
+  htim3.Init.Period = 29999;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
@@ -586,10 +591,6 @@ static void MX_TIM3_Init(void)
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     Error_Handler();
@@ -952,7 +953,7 @@ static void MX_TIM20_Init(void)
   htim20.Instance = TIM20;
   htim20.Init.Prescaler = 0;
   htim20.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim20.Init.Period = 65535;
+  htim20.Init.Period = 42499;
   htim20.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim20.Init.RepetitionCounter = 0;
   htim20.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;

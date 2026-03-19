@@ -137,3 +137,54 @@ void MotorCtrl_Update(motor_ctrl_t *ctrl) {
   ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
   ctrl->hall_triggered  = debounce_sensor(ctrl->hall_effect);
 }
+
+// -- Other Control Implementations -------------------------------------------
+
+void LED_SetDuty(led_pulse_ctrl_t *ctrl, float duty_cycle) {
+  __HAL_TIM_SET_COMPARE(
+    ctrl->tim, ctrl->tim_channel, 
+    (uint32_t)(duty_cycle * __HAL_TIM_GET_AUTORELOAD(ctrl->tim))
+  );
+}
+
+void LED_PulseUpdate(led_pulse_ctrl_t *ctrl) {
+  if (ctrl->increasing) {
+    ctrl->duty_cycle += ctrl->duty_step;
+    if (ctrl->duty_cycle >= 1.0f) {
+      ctrl->duty_cycle = 1.0f;
+      ctrl->increasing = false;
+    }
+  } else {
+    ctrl->duty_cycle -= ctrl->duty_step;
+    if (ctrl->duty_cycle <= 0.0f) {
+      ctrl->duty_cycle = 0.0f;
+      ctrl->increasing = true;
+    }
+  }  
+
+  // Apply a non-linear transformation to make the pulse more visually appealing
+  float adjusted_duty = ctrl->duty_cycle * ctrl->duty_cycle;
+  LED_SetDuty(ctrl, adjusted_duty);
+}
+
+void Fan_SetDuty(fan_ctrl_t *ctrl, float duty_cycle) {
+  __HAL_TIM_SET_COMPARE(
+    ctrl->tim, ctrl->tim_channel, 
+    (uint32_t)(duty_cycle * __HAL_TIM_GET_AUTORELOAD(ctrl->tim))
+  );
+}
+
+void Pump_SetDuty(pump_ctrl_t *ctrl, float duty_cycle) {
+  uint32_t current_ma = CurrentSense_GetCurrentmA(&ctrl->current);
+
+  if (current_ma >= ctrl->MAX_CURRENT_mA) {
+    // Overcurrent, shut off pump
+    __HAL_TIM_SET_COMPARE(ctrl->tim, ctrl->tim_channel, 0);
+    return;
+  }
+
+  __HAL_TIM_SET_COMPARE(
+    ctrl->tim, ctrl->tim_channel, 
+    (uint32_t)(duty_cycle * __HAL_TIM_GET_AUTORELOAD(ctrl->tim))
+  );
+}

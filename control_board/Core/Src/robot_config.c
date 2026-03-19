@@ -69,7 +69,7 @@ stepper_ctrl_t stepper_underpass = {
     .MICROSTEPS = DRV8834_MICROSTEPS,
 };
 
-// DC motor control structs
+// -- DC Motor Configurations -------------------------------------------------
 
 qPID_Gains_t pid_gains_pitch = {.Kc = 0.1f, .Ki = 0.0f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_roll = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
@@ -140,7 +140,8 @@ drv8251_config_t clamp_drv = {
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
-// Encoder configurations
+// -- Encoder Configurations --------------------------------------------------
+
 enc_config_t enc_pitch = {
     .enc_a_port = PITCH_ENC_A_GPIO_Port,
     .enc_a_pin = PITCH_ENC_A_Pin,
@@ -174,6 +175,8 @@ enc_config_t enc_clamp = {
     .enc_b_pin = KNIFECLAMP_ENC_B_Pin,
     .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
 };
+
+// -- Motor Control Structs ---------------------------------------------------
 
 extern ADC_HandleTypeDef hadc1;
 
@@ -262,6 +265,43 @@ motor_ctrl_t clamp = {
         .shunt_resistor_mohm = 82,
     },
 };
+
+// -- MISC Control Structs ----------------------------------------------------
+
+led_pulse_ctrl_t led_strip = {
+    .port = LED_STRIP_GPIO_Port,
+    .pin = LED_STRIP_Pin,
+
+    .tim = &htim20,
+    .tim_channel = TIM_CHANNEL_1,
+
+    // start on
+    .duty_cycle = 1.0f,
+    .duty_step = 0.005f, 
+    .increasing = false,
+};
+
+fan_ctrl_t fan = {
+    .port = FAN1_GPIO_GPIO_Port,
+    .pin = FAN1_GPIO_Pin,
+    .tim = &htim3,
+    .tim_channel = TIM_CHANNEL_2,
+};
+
+pump_ctrl_t pump = {
+    .port = PUMP_M_IN_GPIO_Port,
+    .pin = PUMP_M_IN_Pin,
+    .tim = &htim3,
+    .tim_channel = TIM_CHANNEL_3,
+    .current = {
+        .adc_instance = &hadc1,
+        .adc_index = 1, // ADC RANK 2
+        .shunt_resistor_mohm = 75,
+    },
+    .MAX_CURRENT_mA = 800,
+};
+
+// -- Function Definitions ----------------------------------------------------
 
 void RobotConfig_Init(void) {
   // Init DMA
