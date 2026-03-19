@@ -12,6 +12,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define KICKSTART_DURATION_MS 10
+#define BRAKE_DURATION_MS 100
+
 typedef struct {
   GPIO_TypeDef *port;
   uint32_t pin;
@@ -45,7 +48,7 @@ typedef struct {
 
   float target_rps; // Desired speed (rev/s)
   float last_target_rps; // Last target speed (rev/s)
-  float dt;         // Control loop period (seconds)
+  float dt_s;         // Control loop period (seconds)
 
   // cached values
   float current_rps; // Current speed (rev/s)
@@ -53,6 +56,11 @@ typedef struct {
   float current_angle_deg; // Current angle (degrees)
   bool limit_triggered; // Whether the limit switch is currently triggered
   bool hall_triggered; // Whether the hall effect sensor is currently triggered
+
+  // QoL var
+  bool braking;
+  uint32_t cuur_brake_ms;
+  uint32_t curr_kickstart_ms;
 } motor_ctrl_t;
 
 typedef struct {

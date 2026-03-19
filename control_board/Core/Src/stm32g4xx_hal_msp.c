@@ -486,8 +486,10 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
     /**TIM2 GPIO Configuration
     PD3     ------> TIM2_CH1
     PD4     ------> TIM2_CH2
+    PD6     ------> TIM2_CH4
+    PD7     ------> TIM2_CH3
     */
-    GPIO_InitStruct.Pin = PITCH_M_IN_B_Pin|PITCH_M_IN_A_Pin;
+    GPIO_InitStruct.Pin = PITCH_M_IN_B_Pin|PITCH_M_IN_A_Pin|MOTOR_DRIVER_IN_B_Pin|MOTOR_DRIVER_IN_A_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

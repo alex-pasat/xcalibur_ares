@@ -387,7 +387,7 @@ void Test_AdcDma(void) {
 void Test_MinDuty(motor_ctrl_t *m) {
     tprintf("\r\n=== MIN DUTY TEST ===\r\n");
     
-    for (float duty = 0.1f; duty <= 1.0f; duty += 0.0005f) {
+    for (float duty = 0.0f; duty <= 1.0f; duty += 0.005f) {
         DRV8251_SetDuty(m->drv, duty);
         HAL_Delay(1000);
         
@@ -451,7 +451,7 @@ void Test_MaxSpeed(motor_ctrl_t *m, const char *nm) {
         float dt = (now - last_tick) * 0.001f;
         last_tick = now;
 
-        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        float rps = fabsf(Encoder_ComputeVelocityRPS(m->enc, dt));
         sum_fwd += rps;
         count_fwd++;
     }
@@ -481,7 +481,7 @@ void Test_MaxSpeed(motor_ctrl_t *m, const char *nm) {
         float dt = (now - last_tick) * 0.001f;
         last_tick = now;
 
-        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        float rps = fabsf(Encoder_ComputeVelocityRPS(m->enc, dt));
         sum_rev += rps;
         count_rev++;
     }
@@ -511,7 +511,7 @@ void Test_MinSpeed(motor_ctrl_t *m, const char *nm) {
         float dt = (now - last_tick) * 0.001f;
         last_tick = now;
 
-        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        float rps = fabsf(Encoder_ComputeVelocityRPS(m->enc, dt));
         sum += rps;
         count++;
     }
@@ -523,6 +523,93 @@ void Test_MinSpeed(motor_ctrl_t *m, const char *nm) {
     tprintf("  avg=%.2f rps\r\n", avg);
     MotorCtrl_Disable(m);
 }
+
+void Test_Stiction(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Stiction: %s --\r\n", nm);
+
+    float stiction_duty = 0.0f;
+    float moving_duty   = 0.0f;
+
+    // -----------------------------------------------------------------------
+    // Phase 1: find minimum duty to START moving from rest (stiction)
+    // Ramp up slowly until encoder moves
+    // -----------------------------------------------------------------------
+    tprintf("  Phase 1: finding stiction (start) duty...\r\n");
+
+    for (float duty = 0.0f; duty <= 1.0f; duty += 0.01f) {
+        DRV8251_SetDuty(m->drv, duty);
+        HAL_Delay(1000);  // settle time at each step
+
+        __disable_irq();
+        int32_t before = m->enc->count;
+        __enable_irq();
+
+        HAL_Delay(100);
+
+        __disable_irq();
+        int32_t after = m->enc->count;
+        __enable_irq();
+
+        tprintf("  duty=%.2f count_delta=%ld\r\n", duty, after - before);
+
+        if (abs(after - before) > 2) {  // threshold: at least 2 counts moved
+            stiction_duty = duty;
+            tprintf("  >> Stiction duty: %.2f\r\n", stiction_duty);
+            break;
+        }
+    }
+
+    DRV8251_SetDuty(m->drv, 0.0f);
+    HAL_Delay(500);
+
+    // -----------------------------------------------------------------------
+    // Phase 2: find minimum duty to KEEP moving once already spinning
+    // Start at stiction duty, then ramp down until it stops
+    // -----------------------------------------------------------------------
+    tprintf("  Phase 2: finding minimum running duty...\r\n");
+
+    for (float duty = stiction_duty; duty >= 0.0f; duty -= 0.01f) {
+        DRV8251_SetDuty(m->drv, duty);
+        HAL_Delay(3000);
+
+        __disable_irq();
+        int32_t before = m->enc->count;
+        __enable_irq();
+
+        HAL_Delay(100);
+
+        __disable_irq();
+        int32_t after = m->enc->count;
+        __enable_irq();
+
+        tprintf("  duty=%.2f count_delta=%ld\r\n", duty, after - before);
+
+        if (abs(after - before) <= 2) {  // stopped
+            moving_duty = duty + 0.01f;  // last duty it was moving at
+            tprintf("  >> Min running duty: %.2f\r\n", moving_duty);
+            break;
+        }
+    }
+
+    DRV8251_SetDuty(m->drv, 0.0f);
+
+    // -----------------------------------------------------------------------
+    // Summary
+    // -----------------------------------------------------------------------
+    tprintf("\r\n  === Stiction Results: %s ===\r\n", nm);
+    tprintf("  Stiction (start) duty : %.2f\r\n", stiction_duty);
+    tprintf("  Min running duty      : %.2f\r\n", moving_duty);
+    tprintf("  Suggested KICKSTART_DUTY  = %.2f\r\n", stiction_duty + 0.05f);
+    tprintf("  Suggested MIN_DUTY_CYCLE  = %.2f\r\n", moving_duty);
+
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%s stiction: start duty found (%.2f)", nm, stiction_duty);
+    ASSERT(stiction_duty > 0.0f && stiction_duty < 1.0f, buf);
+    snprintf(buf, sizeof(buf), "%s stiction: running duty < start duty (%.2f < %.2f)",
+             nm, moving_duty, stiction_duty);
+    ASSERT(moving_duty < stiction_duty, buf);
+}
+
 
 void Test_PID(motor_ctrl_t *m, const char *nm, float tgt) {
     tprintf("\r\n-- PID: %s (%.1f rps) --\r\n", nm, tgt);
@@ -559,3 +646,4 @@ void Test_PID(motor_ctrl_t *m, const char *nm, float tgt) {
     tprintf("  settled=%.2f  peak=%.2f rps\r\n", m->current_rps, peak);
     MotorCtrl_Disable(m);
 }
+

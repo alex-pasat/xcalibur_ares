@@ -32,7 +32,8 @@ void DRV8251_SetDuty(drv8251_config_t *config, float duty) {
   float mag = fabsf(duty);
 
   if (mag > 0 && mag < config->MIN_DUTY_CYCLE) {
-    mag = config->MIN_DUTY_CYCLE;
+    DRV8251_Coast(config);
+    return;
   }
 
   uint32_t ar = config->tim_autoreload;

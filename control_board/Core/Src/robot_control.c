@@ -3,6 +3,7 @@
 #include "drv88xx.h"
 #include "encoder.h"
 #include "current_sense.h"
+#include "qpid.h"
 
 #include <stdint.h>
 
@@ -79,11 +80,15 @@ void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
   ctrl->enc = enc;
   ctrl->target_rps = 0.0f;
   ctrl->last_target_rps = 0.0f;
-  ctrl->dt = dt;
+  ctrl->dt_s = dt;
+  ctrl->curr_kickstart_ms = 0;
 
   qPID_Setup(&ctrl->pid, pid_gains.Kc, pid_gains.Ki, pid_gains.Kd, dt);
 
-  qPID_SetSaturation(&ctrl->pid, ctrl->drv->MIN_DUTY_CYCLE, 1.0f);
+  qPID_SetSaturation(&ctrl->pid, -1.0f, 1.0f);
+
+  // prevent integral windup
+  qPID_SetExtraGains(&ctrl->pid, 0.1f, 0.0f); 
 
   DRV8251_Init(drv); // Initialize the motor driver
   if (enc != NULL) Encoder_Init(enc); // Initialize the encoder
@@ -108,34 +113,53 @@ void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
 }
 
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {
-  ctrl->current_rps = Encoder_ComputeVelocity(ctrl->enc, ctrl->dt);
+  // Update sensor readings
+  ctrl->current_rps = Encoder_ComputeVelocityRPS(ctrl->enc, ctrl->dt_s);
   ctrl->current_angle_deg = Encoder_GetAngleDeg(ctrl->enc);
+  ctrl->current_ma      = CurrentSense_GetCurrentmA(&ctrl->curr_config);
+  ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
+  ctrl->hall_triggered  = debounce_sensor(ctrl->hall_effect);
 
+  // Compute control output
   if (ctrl->target_rps == 0.0f) {
-    // If target is zero, just coast and reset PID
     qPID_Reset(&ctrl->pid);
+
+    ctrl->curr_kickstart_ms = 0;
+    ctrl->last_target_rps = 0.0f;
+
+    if (ctrl->braking) {
+      if (ctrl->cuur_brake_ms < BRAKE_DURATION_MS) {
+        DRV8251_Brake(ctrl->drv);
+        ctrl->cuur_brake_ms += (uint32_t)(ctrl->dt_s * 1000);
+        return;
+      } else {
+        ctrl->braking = false;
+      }
+    }
+    
     DRV8251_Coast(ctrl->drv);
     return;
   }
 
-  // Update saturation and reset integrator on direction change
-  bool going_fwd = ctrl->target_rps >= 0.0f;
-  bool was_fwd   = ctrl->last_target_rps >= 0.0f;
+  ctrl->braking = false;
 
-  if (going_fwd != was_fwd) {
-    qPID_Reset(&ctrl->pid);
-    if (going_fwd)
-      qPID_SetSaturation(&ctrl->pid,  ctrl->drv->MIN_DUTY_CYCLE, 1.0f);
-    else
-      qPID_SetSaturation(&ctrl->pid, -1.0f, -ctrl->drv->MIN_DUTY_CYCLE);
+  bool direction_changed = (ctrl->last_target_rps * ctrl->target_rps < 0.0f);
+  if (direction_changed || ctrl->last_target_rps == 0.0f) {
+    ctrl->curr_kickstart_ms = 0;
   }
+
+  if (ctrl->curr_kickstart_ms < KICKSTART_DURATION_MS) {
+    float duty = (ctrl->target_rps > 0.0f) ? ctrl->drv->STALL_DUTY_CYCLE : -ctrl->drv->STALL_DUTY_CYCLE;
+    DRV8251_SetDuty(ctrl->drv, duty);
+    ctrl->curr_kickstart_ms += (uint32_t)(ctrl->dt_s * 1000);
+    ctrl->last_target_rps = ctrl->target_rps;
+    return;
+  }
+
+  ctrl->last_target_rps = ctrl->target_rps;
 
   float duty = qPID_Control(&ctrl->pid, ctrl->target_rps, ctrl->current_rps);
   DRV8251_SetDuty(ctrl->drv, duty);
-
-  ctrl->current_ma      = CurrentSense_GetCurrentmA(&ctrl->curr_config);
-  ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
-  ctrl->hall_triggered  = debounce_sensor(ctrl->hall_effect);
 }
 
 // -- Other Control Implementations -------------------------------------------

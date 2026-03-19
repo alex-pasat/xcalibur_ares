@@ -26,23 +26,15 @@
 
 // -- Motor Handles ------------------------------------------------------------
 
-// DRV88xx stepper motor configurations
-extern stepper_ctrl_t stepper_spool;
-extern stepper_ctrl_t stepper_raise1;
-extern stepper_ctrl_t stepper_raise2;
-
 // DRV8834 stepper motor configurations
 extern stepper_ctrl_t stepper_underpass;
-extern stepper_ctrl_t stepper_bevel;
 
 // DRV8251DDAR DC motor configurations
 extern motor_ctrl_t dc_pitch;
 extern motor_ctrl_t dc_roll;
 extern motor_ctrl_t dc_yaw;
 extern motor_ctrl_t clamp;
-extern motor_ctrl_t tension;
-extern motor_ctrl_t sclamp1;
-extern motor_ctrl_t sclamp2;
+extern motor_ctrl_t dc_extra;
 
 extern led_pulse_ctrl_t led_strip;
 extern fan_ctrl_t fan;

@@ -39,6 +39,7 @@ typedef struct {
     TIM_HandleTypeDef *in2_tim;
     uint32_t in2_tim_channel;
 
+    float STALL_DUTY_CYCLE;
     float MIN_DUTY_CYCLE;
     float MAX_RPS;
 
@@ -70,8 +71,6 @@ void DRV8251_SetDuty(drv8251_config_t *config, float duty);
  * @param config  Pointer to driver configuration structure.
  * @param speed   Target speed in RPS. Sign determines direction. Magnitude is
  *                clamped to MAX_RPS.
- *                If speed is very low (below DRV8251_MIN_DUTY_CYCLE), motor will be
- *                coasted instead to avoid stalling.
  */
 void DRV8251_SetSpeed(drv8251_config_t *config, float speed);
 

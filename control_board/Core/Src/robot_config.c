@@ -27,9 +27,13 @@
 #define ROLL_M_GEAR_RATIO 380.0f
 #define ROLL_M_COUNTS_PER_REV (ROLL_M_CPR * ROLL_M_GEAR_RATIO * 4.0f)
 
-#define YAW_M_CPR 12.0f
+#define YAW_M_CPR 7.0f
 #define YAW_M_GEAR_RATIO 380.0f
-#define YAW_M_COUNTS_PER_REV 10600.0f // measured
+#define YAW_M_COUNTS_PER_REV (YAW_M_CPR * YAW_M_GEAR_RATIO * 4.0f)
+
+#define CLAMP_M_CPR 7.0f
+#define CLAMP_M_GEAR_RATIO 380.0f
+#define CLAMP_M_COUNTS_PER_REV (CLAMP_M_CPR * CLAMP_M_GEAR_RATIO * 4.0f)
 
 // -- PV Definitions ----------------------------------------------------------
 
@@ -71,10 +75,11 @@ stepper_ctrl_t stepper_underpass = {
 
 // -- DC Motor Configurations -------------------------------------------------
 
-qPID_Gains_t pid_gains_pitch = {.Kc = 0.1f, .Ki = 0.0f, .Kd = 0.0f};
+qPID_Gains_t pid_gains_pitch = {.Kc = 0.2f, .Ki = 1.0f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_roll = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_yaw = {.Kc = 6.7f, .Ki = 0.67f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_clamp = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
+qPID_Gains_t pid_gains_extra = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
 
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
@@ -93,8 +98,9 @@ drv8251_config_t dc_pitch_drv = {
     .in2_pin = PITCH_M_IN_A_Pin,
     .in2_tim = &htim2,
     .in2_tim_channel = TIM_CHANNEL_2,
-    .dir_inverted = true, // TODO: check wiring and set this correctly
-    .MIN_DUTY_CYCLE = 0.11f,
+    .dir_inverted = true,
+    .STALL_DUTY_CYCLE = 0.11f,
+    .MIN_DUTY_CYCLE = 0.035f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -107,8 +113,8 @@ drv8251_config_t dc_roll_drv = {
     .in2_pin = ROLL_M_IN_A_Pin,
     .in2_tim = &htim4,
     .in2_tim_channel = TIM_CHANNEL_4,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_DUTY_CYCLE = 0.01f, // TODO: set this based on testing to overcome static friction
+    .dir_inverted = true,
+    .MIN_DUTY_CYCLE = 0.60f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -136,7 +142,21 @@ drv8251_config_t clamp_drv = {
     .in2_tim = &htim15,
     .in2_tim_channel = TIM_CHANNEL_2,
     .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_DUTY_CYCLE = 0.01f, // TODO: set this based on testing to overcome static friction
+    .MIN_DUTY_CYCLE = 0.60f,
+    .MAX_RPS = RPM_TO_RPS(1500),
+};
+
+drv8251_config_t dc_extra_drv = {
+    .in1_port = MOTOR_DRIVER_IN_B_GPIO_Port,
+    .in1_pin = MOTOR_DRIVER_IN_B_Pin,
+    .in1_tim = &htim2,
+    .in1_tim_channel = TIM_CHANNEL_3,
+    .in2_port = MOTOR_DRIVER_IN_A_GPIO_Port,
+    .in2_pin = MOTOR_DRIVER_IN_A_Pin,
+    .in2_tim = &htim2,
+    .in2_tim_channel = TIM_CHANNEL_4,
+    .dir_inverted = false,
+    .MIN_DUTY_CYCLE = 0.60f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -266,6 +286,25 @@ motor_ctrl_t clamp = {
     },
 };
 
+motor_ctrl_t dc_extra = {
+    .drv = &dc_extra_drv,
+    .enc = &enc_yaw, // for testing
+    .pid = {0},
+    .limit_sw = &(gpio_sensor_t){
+      .port = NULL, // no limit switch
+      .pin = 0xFF,
+    },
+    .hall_effect = &(gpio_sensor_t){
+      .port = NULL,
+      .pin = 0xFF,
+      .threshold = 0,
+      .last_state = false,
+      .debounce_count = 0,
+    },
+    .adc_port = NULL,
+    .adc_pin = 0xFF,
+};
+
 // -- MISC Control Structs ----------------------------------------------------
 
 led_pulse_ctrl_t led_strip = {
@@ -320,6 +359,8 @@ void RobotConfig_Init(void) {
       pid_gains_yaw, CONTROL_TIME_STEP_S);
   MotorCtrl_Init(&clamp, &clamp_drv, &enc_clamp, &clamp.pid,
       pid_gains_clamp, CONTROL_TIME_STEP_S);
+  MotorCtrl_Init(&dc_extra, &dc_extra_drv, NULL, &dc_extra.pid,
+      pid_gains_extra, CONTROL_TIME_STEP_S);
 
   HAL_TIM_PWM_Start(led_strip.tim, led_strip.tim_channel);
   HAL_TIM_PWM_Start(fan.tim, fan.tim_channel);

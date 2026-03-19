@@ -5,6 +5,7 @@
 
  // -- INCLUDES ---------------------------------------------------------------
 #include "encoder.h"
+#include "motor_utils.h"
 
 // -- PRIVATE VARIABLES -------------------------------------------------------
 
@@ -24,7 +25,7 @@ void Encoder_Init(enc_config_t *enc) {
     enc->count = 0;
 }
 
-float Encoder_ComputeVelocity(enc_config_t *enc, float dt_s) {
+float Encoder_ComputeVelocityRPS(enc_config_t *enc, float dt_s) {
     __disable_irq();
     int32_t delta_ticks = enc->count - enc->prev_count;
     enc->prev_count = enc->count;
@@ -35,7 +36,7 @@ float Encoder_ComputeVelocity(enc_config_t *enc, float dt_s) {
 float Encoder_GetAngleDeg(const enc_config_t *enc) {
     int32_t ticks_mod = enc->count % (int32_t)enc->counts_per_rev;
     if (ticks_mod < 0) ticks_mod += (int32_t)enc->counts_per_rev;
-    return ((float)ticks_mod / (float)enc->counts_per_rev) * 360.0f;
+    return ((float)ticks_mod / (float)enc->counts_per_rev) * DEG_PER_REV;
 }
 
 void Encoder_Reset(enc_config_t *enc) {

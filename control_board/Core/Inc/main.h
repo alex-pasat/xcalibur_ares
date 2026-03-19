@@ -123,8 +123,10 @@ void Error_Handler(void);
 #define ROLL_ENC_A_EXTI_IRQn EXTI15_10_IRQn
 #define PITCH_ENC_B_Pin GPIO_PIN_6
 #define PITCH_ENC_B_GPIO_Port GPIOC
+#define PITCH_ENC_B_EXTI_IRQn EXTI9_5_IRQn
 #define PITCH_ENC_A_Pin GPIO_PIN_7
 #define PITCH_ENC_A_GPIO_Port GPIOC
+#define PITCH_ENC_A_EXTI_IRQn EXTI9_5_IRQn
 #define UNDERPASS_DIR_Pin GPIO_PIN_1
 #define UNDERPASS_DIR_GPIO_Port GPIOD
 #define UNDERPASS_STEP_Pin GPIO_PIN_2
@@ -133,6 +135,10 @@ void Error_Handler(void);
 #define PITCH_M_IN_B_GPIO_Port GPIOD
 #define PITCH_M_IN_A_Pin GPIO_PIN_4
 #define PITCH_M_IN_A_GPIO_Port GPIOD
+#define MOTOR_DRIVER_IN_B_Pin GPIO_PIN_6
+#define MOTOR_DRIVER_IN_B_GPIO_Port GPIOD
+#define MOTOR_DRIVER_IN_A_Pin GPIO_PIN_7
+#define MOTOR_DRIVER_IN_A_GPIO_Port GPIOD
 #define YAW_M_IN_B_Pin GPIO_PIN_4
 #define YAW_M_IN_B_GPIO_Port GPIOB
 #define YAW_M_IN_A_Pin GPIO_PIN_5

@@ -35,6 +35,7 @@ void Test_MinDuty(motor_ctrl_t *m);
 void Test_EncoderCPR(motor_ctrl_t *m);
 void Test_MaxSpeed(motor_ctrl_t *m, const char *nm);
 void Test_MinSpeed(motor_ctrl_t *m, const char *nm);
+void Test_Stiction(motor_ctrl_t *m, const char *nm);
 void Test_PID(motor_ctrl_t *m, const char *nm, float setpoint);
 
 #endif /* TEST_H */
