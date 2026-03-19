@@ -26,8 +26,7 @@ typedef struct {
   int32_t count;             // Absolute position in ticks
   int32_t prev_count;        // Previous count, used for velocity calculation
   uint32_t counts_per_rev;   // Encoder resolution (ticks per revolution)
-
-  float velocity_rps; // Current velocity in revolutions per second
+  uint16_t gear_ratio;      // Gear ratio between output shaft and encoder 
 } enc_config_t;
 
 // -- FUNCTION PROTOTYPES -----------------------------------------------------

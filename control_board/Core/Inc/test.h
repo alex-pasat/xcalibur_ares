@@ -21,15 +21,20 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include "robot_control.h"
+#include "test.h"
 void Test_Encoders(void);
 void Test_CurrentSensing(void);
-void Test_PIDs(void);
+void Test_Characterization(void);
 void Test_Stepper(void);
 void Test_LimitSwitch(void);
 void Test_HallSensors(void);
 void Test_AdcDma(void);
 
-/** Run all test groups and print a final pass/fail summary. */
-void Test_RunAll(void);
+void Test_MinDuty(motor_ctrl_t *m);
+void Test_EncoderCPR(motor_ctrl_t *m);
+void Test_MaxSpeed(motor_ctrl_t *m, const char *nm);
+void Test_MinSpeed(motor_ctrl_t *m, const char *nm);
+void Test_PID(motor_ctrl_t *m, const char *nm, float setpoint);
 
 #endif /* TEST_H */

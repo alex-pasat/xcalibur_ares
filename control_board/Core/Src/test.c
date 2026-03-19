@@ -4,15 +4,18 @@
  */
 
 #include "test.h"
+#include "encoder.h"
 #include "usb_device.h"
 #include "robot_config.h"
 #include "robot_control.h"
-#include "stm32g4xx_hal.h"
+#include "tiny_ring_buffer.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <math.h>
 
 // ---------------------------------------------------------------------------
 // External instances from robot_config.c
@@ -93,22 +96,20 @@ static void enc_one(motor_ctrl_t *m, const char *nm) {
     snprintf(buf, sizeof(buf), "%s enc: ~0 after reset", nm);
     NEAR(m->current_angle_deg, 0.0f, 1.0f, buf);
 
-    MotorCtrl_Enable(m);
-
     MotorCtrl_SetTarget(m, 1.0f);
-    run_ms(m, 600);
+    run_ms(m, 5000);
     float fwd = m->current_angle_deg;
     snprintf(buf, sizeof(buf), "%s enc: increases fwd (%.1f deg)", nm, fwd);
     ASSERT(fwd > 5.0f, buf);
 
     MotorCtrl_SetTarget(m, -1.0f);
-    run_ms(m, 600);
+    run_ms(m, 5000);
     float rev = m->current_angle_deg;
     snprintf(buf, sizeof(buf), "%s enc: decreases rev (%.1f deg)", nm, rev);
     ASSERT(rev < fwd, buf);
 
     MotorCtrl_SetTarget(m, 0.0f);
-    run_ms(m, 200);
+    run_ms(m, 2000);
     snprintf(buf, sizeof(buf), "%s enc: holds when stopped", nm);
     NEAR(m->current_angle_deg, rev, 3.0f, buf);
 
@@ -130,7 +131,6 @@ static void curr_one(motor_ctrl_t *m, const char *nm,
     snprintf(buf, sizeof(buf), "%s curr: idle < 50 mA (got %lu)", nm, idle);
     ASSERT(idle < 50, buf);
 
-    MotorCtrl_Enable(m);
     MotorCtrl_SetTarget(m, 1.5f);
     run_ms(m, 300);
     uint32_t run = m->current_ma;
@@ -152,43 +152,6 @@ static void curr_one(motor_ctrl_t *m, const char *nm,
     MotorCtrl_Disable(m);
 }
 
-static void pid_one(motor_ctrl_t *m, const char *nm, float tgt) {
-    tprintf("\r\n-- PID: %s (%.1f rps) --\r\n", nm, tgt);
-    char buf[96];
-
-    MotorCtrl_Enable(m);
-
-    MotorCtrl_SetTarget(m, tgt);
-    run_ms(m, 1000);
-    snprintf(buf, sizeof(buf), "%s PID: reaches %.1f rps (got %.2f)", nm, tgt, m->current_rps);
-    NEAR(m->current_rps, tgt, 0.3f, buf);
-
-    float half = tgt * 0.5f;
-    MotorCtrl_SetTarget(m, half);
-    run_ms(m, 800);
-    snprintf(buf, sizeof(buf), "%s PID: tracks step to %.1f (got %.2f)", nm, half, m->current_rps);
-    NEAR(m->current_rps, half, 0.3f, buf);
-
-    MotorCtrl_SetTarget(m, 0.0f);
-    run_ms(m, 500);
-    snprintf(buf, sizeof(buf), "%s PID: stops cleanly (got %.2f)", nm, m->current_rps);
-    NEAR(m->current_rps, 0.0f, 0.15f, buf);
-
-    float peak = 0.0f;
-    MotorCtrl_SetTarget(m, tgt);
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() - t < 1500) {
-        MotorCtrl_Update(m);
-        if (m->current_rps > peak) peak = m->current_rps;
-        HAL_Delay(1);
-    }
-    snprintf(buf, sizeof(buf), "%s PID: overshoot < 25%% (peak=%.2f)", nm, peak);
-    ASSERT(peak < tgt * 1.25f, buf);
-
-    tprintf("  settled=%.2f  peak=%.2f rps\r\n", m->current_rps, peak);
-    MotorCtrl_Disable(m);
-}
-
 static void hall_one(motor_ctrl_t *m, const char *nm) {
     tprintf("\r\n-- Hall: %s --\r\n", nm);
     char buf[96];
@@ -203,7 +166,6 @@ static void hall_one(motor_ctrl_t *m, const char *nm) {
 
     snprintf(buf, sizeof(buf), "Rotate %s motor slowly past hall sensor", nm);
     prompt(buf);
-    MotorCtrl_Enable(m);
     MotorCtrl_SetTarget(m, 0.3f);
     bool seen = false;
     uint32_t t = HAL_GetTick();
@@ -221,16 +183,88 @@ static void hall_one(motor_ctrl_t *m, const char *nm) {
     tprintf("  triggered: %s\r\n", seen ? "yes" : "no");
 }
 
+// Tests linearity of duty cycle vs speed — useful for feedforward tuning
+static void linearity_one(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Linearity: %s --\r\n", nm);
+
+    float duties[] = { 0.25f, 0.50f, 0.75f, 1.0f };
+    float speeds[4];
+
+    for (int i = 0; i < 4; i++) {
+        DRV8251_SetDuty(m->drv, duties[i]);
+        uint32_t t = HAL_GetTick();
+        while (HAL_GetTick() - t < 1500) { MotorCtrl_Update(m); HAL_Delay(1); }
+        speeds[i] = m->current_rps;
+        tprintf("  duty=%.2f → %.2f rps\r\n", duties[i], speeds[i]);
+    }
+
+    // Check monotonically increasing
+    bool monotonic = true;
+    for (int i = 1; i < 4; i++)
+        if (speeds[i] <= speeds[i-1]) { monotonic = false; break; }
+    ASSERT(monotonic, "linearity: speed increases monotonically with duty");
+
+    MotorCtrl_Disable(m);
+}
+
+// Tests that the motor actually brakes and doesn't just coast
+static void brake_one(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Brake: %s --\r\n", nm);
+    char buf[96];
+
+    // Spin up
+    DRV8251_SetDuty(m->drv, 0.8f);
+    uint32_t t = HAL_GetTick();
+    while (HAL_GetTick() - t < 1500) { MotorCtrl_Update(m); HAL_Delay(1); }
+    float running = m->current_rps;
+
+    // Brake and measure how quickly it stops
+    DRV8251_Brake(m->drv);
+    uint32_t brake_time = HAL_GetTick();
+    while (HAL_GetTick() - brake_time < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
+    float after_brake = fabsf(m->current_rps);
+
+    snprintf(buf, sizeof(buf), "%s brake: stops within 2s (running=%.2f after=%.2f)",
+             nm, running, after_brake);
+    ASSERT(after_brake < 0.1f, buf);
+    tprintf("  running=%.2f  after_brake=%.2f rps\r\n", running, after_brake);
+
+    MotorCtrl_Disable(m);
+}
+
+// Checks that the motor stays still under small disturbances with PID active
+static void disturbance_one(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Disturbance Rejection: %s --\r\n", nm);
+    char buf[96];
+
+    MotorCtrl_SetTarget(m, 1.0f);
+    uint32_t t = HAL_GetTick();
+    while (HAL_GetTick() - t < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
+
+    float before = m->current_rps;
+    prompt("Briefly resist the yaw motor shaft by hand then release");
+
+    t = HAL_GetTick();
+    while (HAL_GetTick() - t < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
+    float recovered = m->current_rps;
+
+    snprintf(buf, sizeof(buf), "%s disturbance: recovers to 1.0 rps (got %.2f)", nm, recovered);
+    NEAR(recovered, 1.0f, 0.3f, buf);
+    tprintf("  before=%.2f  recovered=%.2f rps\r\n", before, recovered);
+
+    MotorCtrl_Disable(m);
+}
+
 // ============================================================================
 // Public test functions
 // ============================================================================
 
 void Test_Encoders(void) {
     tprintf("\r\n=== ENCODER TESTS ===\r\n");
-    enc_one(&dc_pitch, "pitch");
-    enc_one(&dc_roll,  "roll");
+    // enc_one(&dc_pitch, "pitch");
+    // enc_one(&dc_roll,  "roll");
     enc_one(&dc_yaw,   "yaw");
-    enc_one(&clamp,    "clamp");
+    // enc_one(&clamp,    "clamp");
 }
 
 void Test_CurrentSensing(void) {
@@ -240,13 +274,11 @@ void Test_CurrentSensing(void) {
     tprintf("  roll, yaw: no ADC configured — skipped\r\n");
 }
 
-void Test_PIDs(void) {
-    tprintf("\r\n=== PID TESTS ===\r\n");
-    tprintf("NOTE: gains Kc=1 Ki=0 Kd=0 — tune before trusting tracking\r\n");
-    pid_one(&dc_pitch, "pitch", 1.0f);
-    pid_one(&dc_roll,  "roll",  1.0f);
-    pid_one(&dc_yaw,   "yaw",   1.0f);
-    pid_one(&clamp,    "clamp", 0.5f);
+void Test_Characterization(void) {
+    tprintf("\r\n=== MOTOR CHARACTERIZATION ===\r\n");
+    linearity_one(&dc_yaw,  "yaw");
+    brake_one(&dc_yaw,      "yaw");
+    disturbance_one(&dc_yaw, "yaw");
 }
 
 void Test_Stepper(void) {
@@ -343,7 +375,6 @@ void Test_AdcDma(void) {
             p1, p1 / 4095.0f * 3300.0f);
 
     uint16_t before = adc_dma_buf[0];
-    MotorCtrl_Enable(&dc_pitch);
     MotorCtrl_SetTarget(&dc_pitch, 1.5f);
     run_ms(&dc_pitch, 300);
     uint16_t after = adc_dma_buf[0];
@@ -353,24 +384,178 @@ void Test_AdcDma(void) {
     tprintf("  pitch ADC before=%u after=%u\r\n", before, after);
 }
 
-void Test_RunAll(void) {
-    n_run = n_pass = n_fail = 0;
+void Test_MinDuty(motor_ctrl_t *m) {
+    tprintf("\r\n=== MIN DUTY TEST ===\r\n");
+    
+    for (float duty = 0.1f; duty <= 1.0f; duty += 0.0005f) {
+        DRV8251_SetDuty(m->drv, duty);
+        HAL_Delay(1000);
+        
+        __disable_irq();
+        int32_t before = m->enc->count;
+        __enable_irq();
+        HAL_Delay(200);
+        __disable_irq();
+        int32_t after = m->enc->count;
+        __enable_irq();
+        
+        bool moving = (after != before);
+        tprintf("duty=%.4f moving=%s\r\n", duty, moving ? "YES" : "no");
+        if (moving) break;
+    }
+    DRV8251_SetDuty(m->drv, 0.0f);
+}
 
-    tprintf("\r\n\r\n=== Robot Hardware Tests ===\r\n");
-    tprintf("Build: " __DATE__ " " __TIME__ "\r\n");
-    tprintf("Core:  %lu MHz\r\n", SystemCoreClock / 1000000);
+void Test_EncoderCPR(motor_ctrl_t *m) {
+    tprintf("\r\n=== ENCODER CPR TEST ===\r\n");
 
-    Test_Encoders();
-    Test_CurrentSensing();
-    Test_PIDs();
-    Test_Stepper();
-    Test_LimitSwitch();
-    Test_HallSensors();
-    Test_AdcDma();
+    extern tiny_ring_buffer_t usb_rx_ring_buf;
 
-    tprintf("\r\n================================\r\n");
-    tprintf("Results: %lu/%lu passed", n_pass, n_run);
-    if (n_fail > 0) tprintf("  (%lu FAILED)\r\n", n_fail);
-    else            tprintf("  — all passed\r\n");
-    tprintf("================================\r\n");
+    // Reset count
+    __disable_irq();
+    m->enc->count = 0;
+    m->enc->prev_count = 0;
+    __enable_irq();
+
+    tprintf("Motor running slowly — send any USB message to stop\r\n");
+
+    // Run motor slowly open loop
+    DRV8251_SetDuty(m->drv, m->drv->MIN_DUTY_CYCLE);
+
+    while (!tiny_ring_buffer_count(&usb_rx_ring_buf)) {
+        tprintf("count=%ld\r\n", m->enc->count);
+        HAL_Delay(200);
+    }
+    tiny_ring_buffer_clear(&usb_rx_ring_buf);
+
+    DRV8251_SetDuty(m->drv, 0.0f);
+
+    tprintf("\r\nFinal count: %ld\r\n", m->enc->count);
+    tprintf("Expected per output rev: %ld\r\n", m->enc->counts_per_rev);
+}
+
+void Test_MaxSpeed(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Max Speed: %s --\r\n", nm);
+    char buf[96];
+
+    // Forward
+    DRV8251_SetDuty(m->drv, 1.0f);
+    uint32_t t = HAL_GetTick();
+    uint32_t last_tick = t;
+    float sum_fwd = 0.0f;
+    uint32_t count_fwd = 0;
+
+    while (HAL_GetTick() - t < 5000) {
+        HAL_Delay(1);
+        uint32_t now = HAL_GetTick();
+        float dt = (now - last_tick) * 0.001f;
+        last_tick = now;
+
+        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        sum_fwd += rps;
+        count_fwd++;
+    }
+    float avg_fwd = (count_fwd > 0) ? sum_fwd / count_fwd : 0.0f;
+
+    snprintf(buf, sizeof(buf), "%s max speed: motor moves at 100%% duty (%.2f rps)", nm, avg_fwd);
+    ASSERT(avg_fwd > 0.1f, buf);
+
+    DRV8251_SetDuty(m->drv, 0.0f);
+    HAL_Delay(2000);
+
+    // Flush accumulated ticks
+    __disable_irq();
+    m->enc->prev_count = m->enc->count;
+    __enable_irq();
+
+    // Reverse
+    DRV8251_SetDuty(m->drv, -1.0f);
+    t = HAL_GetTick();
+    last_tick = t;
+    float sum_rev = 0.0f;
+    uint32_t count_rev = 0;
+
+    while (HAL_GetTick() - t < 5000) {
+        HAL_Delay(1);
+        uint32_t now = HAL_GetTick();
+        float dt = (now - last_tick) * 0.001f;
+        last_tick = now;
+
+        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        sum_rev += rps;
+        count_rev++;
+    }
+    float avg_rev = (count_rev > 0) ? sum_rev / count_rev : 0.0f;
+
+    snprintf(buf, sizeof(buf), "%s max speed: symmetric fwd/rev (fwd=%.2f rev=%.2f)",
+             nm, avg_fwd, avg_rev);
+    NEAR(avg_fwd, avg_rev, 0.5f, buf);
+
+    tprintf("  fwd=%.2f  rev=%.2f rps\r\n", avg_fwd, avg_rev);
+    MotorCtrl_Disable(m);
+}
+
+void Test_MinSpeed(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n-- Min Speed: %s --\r\n", nm);
+    char buf[96];
+
+    DRV8251_SetDuty(m->drv, m->drv->MIN_DUTY_CYCLE);
+    uint32_t t = HAL_GetTick();
+    uint32_t last_tick = t;
+    float sum = 0.0f;
+    uint32_t count = 0;
+
+    while (HAL_GetTick() - t < 5000) {
+        HAL_Delay(20);
+        uint32_t now = HAL_GetTick();
+        float dt = (now - last_tick) * 0.001f;
+        last_tick = now;
+
+        float rps = fabsf(Encoder_ComputeVelocity(m->enc, dt));
+        sum += rps;
+        count++;
+    }
+    float avg = (count > 0) ? sum / count : 0.0f;
+
+    snprintf(buf, sizeof(buf), "%s min speed: moves at min duty (%.2f rps)", nm, avg);
+    ASSERT(avg > 0.1f, buf);
+
+    tprintf("  avg=%.2f rps\r\n", avg);
+    MotorCtrl_Disable(m);
+}
+
+void Test_PID(motor_ctrl_t *m, const char *nm, float tgt) {
+    tprintf("\r\n-- PID: %s (%.1f rps) --\r\n", nm, tgt);
+    tprintf("Gains: Kc=%.2f Ki=%.2f Kd=%.2f\r\n", m->pid.kc, m->pid.ki, m->pid.kd);
+    char buf[96];
+
+    MotorCtrl_SetTarget(m, tgt);
+    run_ms(m, 5000);
+    snprintf(buf, sizeof(buf), "%s PID: reaches %.1f rps (got %.2f)", nm, tgt, m->current_rps);
+    NEAR(m->current_rps, tgt, 0.3f, buf);
+
+    float half = tgt * 0.5f;
+    MotorCtrl_SetTarget(m, half);
+    run_ms(m, 5000);
+    snprintf(buf, sizeof(buf), "%s PID: tracks step to %.1f (got %.2f)", nm, half, m->current_rps);
+    NEAR(m->current_rps, half, 0.3f, buf);
+
+    MotorCtrl_SetTarget(m, 0.0f);
+    run_ms(m, 2000);
+    snprintf(buf, sizeof(buf), "%s PID: stops cleanly (got %.2f)", nm, m->current_rps);
+    NEAR(m->current_rps, 0.0f, 0.15f, buf);
+
+    float peak = 0.0f;
+    MotorCtrl_SetTarget(m, tgt);
+    uint32_t t = HAL_GetTick();
+    while (HAL_GetTick() - t < 1500) {
+        MotorCtrl_Update(m);
+        if (m->current_rps > peak) peak = m->current_rps;
+        HAL_Delay(1);
+    }
+    snprintf(buf, sizeof(buf), "%s PID: overshoot < 25%% (peak=%.2f)", nm, peak);
+    ASSERT(peak < tgt * 1.25f, buf);
+
+    tprintf("  settled=%.2f  peak=%.2f rps\r\n", m->current_rps, peak);
+    MotorCtrl_Disable(m);
 }

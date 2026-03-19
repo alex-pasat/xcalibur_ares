@@ -17,6 +17,20 @@
 
 #include <string.h>
 
+// -- Defines -----------------------------------------------------------------
+
+#define PITCH_M_CPR 64.0f
+#define PITCH_M_GEAR_RATIO 150.0f
+#define PITCH_M_COUNTS_PER_REV 7600.0f
+
+#define ROLL_M_CPR 12.0f
+#define ROLL_M_GEAR_RATIO 380.0f
+#define ROLL_M_COUNTS_PER_REV (ROLL_M_CPR * ROLL_M_GEAR_RATIO * 4.0f)
+
+#define YAW_M_CPR 12.0f
+#define YAW_M_GEAR_RATIO 380.0f
+#define YAW_M_COUNTS_PER_REV 10600.0f // measured
+
 // -- PV Definitions ----------------------------------------------------------
 
 volatile uint16_t adc_dma_buf[ADC_NUM_CHANNELS];
@@ -57,27 +71,11 @@ stepper_ctrl_t stepper_underpass = {
 
 // DC motor control structs
 
-// TODO: set PID gains for each motor based on tuning
-// Set ki=0, kd=0, increase kp until the motor reaches target speed but
-// oscillates Back kp off to ~60% of that value Increase ki slowly until
-// steady-state error disappears Add a small kd only if you need faster
-// disturbance rejection
-qPID_Gains_t pid_gains_pitch = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
+qPID_Gains_t pid_gains_pitch = {.Kc = 0.1f, .Ki = 0.0f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_roll = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_yaw = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
+qPID_Gains_t pid_gains_yaw = {.Kc = 6.7f, .Ki = 0.67f, .Kd = 0.0f};
 qPID_Gains_t pid_gains_clamp = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-#if 0
-qPID_Gains_t pid_gains_tension = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_sclamp1 = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_sclamp2 = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-#endif
 
-qPID_AutoTuning_t at_pitch;
-qPID_AutoTuning_t at_roll;
-qPID_AutoTuning_t at_yaw;
-qPID_AutoTuning_t at_clamp;
-
-extern TIM_HandleTypeDef htim1;
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
@@ -95,9 +93,9 @@ drv8251_config_t dc_pitch_drv = {
     .in2_pin = PITCH_M_IN_A_Pin,
     .in2_tim = &htim2,
     .in2_tim_channel = TIM_CHANNEL_2,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_RPM = 0, // TODO: set these
-    .MAX_RPM = 1500,
+    .dir_inverted = true, // TODO: check wiring and set this correctly
+    .MIN_DUTY_CYCLE = 0.11f,
+    .MAX_RPS = RPM_TO_RPS(1500),
 };
 
 drv8251_config_t dc_roll_drv = {
@@ -110,22 +108,22 @@ drv8251_config_t dc_roll_drv = {
     .in2_tim = &htim4,
     .in2_tim_channel = TIM_CHANNEL_4,
     .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_RPM = 39,
-    .MAX_RPM = 1500,
+    .MIN_DUTY_CYCLE = 0.01f, // TODO: set this based on testing to overcome static friction
+    .MAX_RPS = RPM_TO_RPS(1500),
 };
 
 drv8251_config_t dc_yaw_drv = {
     .in1_port = YAW_M_IN_B_GPIO_Port,
     .in1_pin = YAW_M_IN_B_Pin,
-    .in1_tim = &htim1,
-    .in1_tim_channel = TIM_CHANNEL_3,
+    .in1_tim = &htim17,
+    .in1_tim_channel = TIM_CHANNEL_1,
     .in2_port = YAW_M_IN_A_GPIO_Port,
     .in2_pin = YAW_M_IN_A_Pin,
-    .in2_tim = &htim1,
-    .in2_tim_channel = TIM_CHANNEL_4,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_RPM = 0, // TODO: set these
-    .MAX_RPM = 1500,
+    .in2_tim = &htim16,
+    .in2_tim_channel = TIM_CHANNEL_1,
+    .dir_inverted = false,
+    .MIN_DUTY_CYCLE = 0.60f,
+    .MAX_RPS = RPM_TO_RPS(1500),
 };
 
 drv8251_config_t clamp_drv = {
@@ -138,8 +136,8 @@ drv8251_config_t clamp_drv = {
     .in2_tim = &htim15,
     .in2_tim_channel = TIM_CHANNEL_2,
     .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_RPM = 0, // TODO: set these
-    .MAX_RPM = 1500,
+    .MIN_DUTY_CYCLE = 0.01f, // TODO: set this based on testing to overcome static friction
+    .MAX_RPS = RPM_TO_RPS(1500),
 };
 
 // Encoder configurations
@@ -148,7 +146,7 @@ enc_config_t enc_pitch = {
     .enc_a_pin = PITCH_ENC_A_Pin,
     .enc_b_port = PITCH_ENC_B_GPIO_Port,
     .enc_b_pin = PITCH_ENC_B_Pin,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
+    .counts_per_rev = PITCH_M_COUNTS_PER_REV,
 };
 
 enc_config_t enc_roll = {
@@ -156,7 +154,8 @@ enc_config_t enc_roll = {
     .enc_a_pin = ROLL_ENC_A_Pin,
     .enc_b_port = ROLL_ENC_B_GPIO_Port,
     .enc_b_pin = ROLL_ENC_B_Pin,
-    .counts_per_rev = 28 * GEAR_RATIO_ROLL, // 28*gear ratio of the roll motor
+    .counts_per_rev = ROLL_M_CPR * 4,
+    .gear_ratio = ROLL_M_GEAR_RATIO,
 };
 
 enc_config_t enc_yaw = {
@@ -164,7 +163,8 @@ enc_config_t enc_yaw = {
     .enc_a_pin = YAW_ENC_A_Pin,
     .enc_b_port = YAW_ENC_B_GPIO_Port,
     .enc_b_pin = YAW_ENC_B_Pin,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
+    .counts_per_rev = 10600,
+    .gear_ratio = YAW_M_GEAR_RATIO,
 };
 
 enc_config_t enc_clamp = {

@@ -302,7 +302,7 @@ void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
     GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -358,18 +358,7 @@ void HAL_SPI_MspDeInit(SPI_HandleTypeDef* hspi)
   */
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_pwm)
 {
-  if(htim_pwm->Instance==TIM1)
-  {
-    /* USER CODE BEGIN TIM1_MspInit 0 */
-
-    /* USER CODE END TIM1_MspInit 0 */
-    /* Peripheral clock enable */
-    __HAL_RCC_TIM1_CLK_ENABLE();
-    /* USER CODE BEGIN TIM1_MspInit 1 */
-
-    /* USER CODE END TIM1_MspInit 1 */
-  }
-  else if(htim_pwm->Instance==TIM2)
+  if(htim_pwm->Instance==TIM2)
   {
     /* USER CODE BEGIN TIM2_MspInit 0 */
 
@@ -412,6 +401,17 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef* htim_pwm)
     /* USER CODE BEGIN TIM15_MspInit 1 */
 
     /* USER CODE END TIM15_MspInit 1 */
+  }
+  else if(htim_pwm->Instance==TIM20)
+  {
+    /* USER CODE BEGIN TIM20_MspInit 0 */
+
+    /* USER CODE END TIM20_MspInit 0 */
+    /* Peripheral clock enable */
+    __HAL_RCC_TIM20_CLK_ENABLE();
+    /* USER CODE BEGIN TIM20_MspInit 1 */
+
+    /* USER CODE END TIM20_MspInit 1 */
   }
 
 }
@@ -477,41 +477,17 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  if(htim->Instance==TIM1)
-  {
-    /* USER CODE BEGIN TIM1_MspPostInit 0 */
-
-    /* USER CODE END TIM1_MspPostInit 0 */
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    /**TIM1 GPIO Configuration
-    PC2     ------> TIM1_CH3
-    PC3     ------> TIM1_CH4
-    */
-    GPIO_InitStruct.Pin = YAW_M_IN_B_Pin|YAW_M_IN_A_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF2_TIM1;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-    /* USER CODE BEGIN TIM1_MspPostInit 1 */
-
-    /* USER CODE END TIM1_MspPostInit 1 */
-  }
-  else if(htim->Instance==TIM2)
+  if(htim->Instance==TIM2)
   {
     /* USER CODE BEGIN TIM2_MspPostInit 0 */
 
     /* USER CODE END TIM2_MspPostInit 0 */
-
     __HAL_RCC_GPIOD_CLK_ENABLE();
     /**TIM2 GPIO Configuration
     PD3     ------> TIM2_CH1
     PD4     ------> TIM2_CH2
-    PD6     ------> TIM2_CH4
-    PD7     ------> TIM2_CH3
     */
-    GPIO_InitStruct.Pin = PITCH_M_IN_B_Pin|PITCH_M_IN_A_Pin|SCLAMP2_M_IN_B_Pin|SCLAMP2_M_IN_A_Pin;
+    GPIO_InitStruct.Pin = PITCH_M_IN_B_Pin|PITCH_M_IN_A_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -553,12 +529,10 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 
     __HAL_RCC_GPIOB_CLK_ENABLE();
     /**TIM4 GPIO Configuration
-    PB6     ------> TIM4_CH1
-    PB7     ------> TIM4_CH2
     PB8-BOOT0     ------> TIM4_CH3
     PB9     ------> TIM4_CH4
     */
-    GPIO_InitStruct.Pin = TENSION_M_IN_B_Pin|TENSION_M_IN_A_Pin|ROLL_M_IN_B_Pin|ROLL_M_IN_A_Pin;
+    GPIO_InitStruct.Pin = ROLL_M_IN_B_Pin|ROLL_M_IN_A_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -601,12 +575,12 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
     /**TIM16 GPIO Configuration
     PB4     ------> TIM16_CH1
     */
-    GPIO_InitStruct.Pin = SCLAMP1_M_IN_B_Pin;
+    GPIO_InitStruct.Pin = YAW_M_IN_B_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF1_TIM16;
-    HAL_GPIO_Init(SCLAMP1_M_IN_B_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(YAW_M_IN_B_GPIO_Port, &GPIO_InitStruct);
 
     /* USER CODE BEGIN TIM16_MspPostInit 1 */
 
@@ -622,16 +596,37 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
     /**TIM17 GPIO Configuration
     PB5     ------> TIM17_CH1
     */
-    GPIO_InitStruct.Pin = SCLAMP1_M_IN_A_Pin;
+    GPIO_InitStruct.Pin = YAW_M_IN_A_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF10_TIM17;
-    HAL_GPIO_Init(SCLAMP1_M_IN_A_GPIO_Port, &GPIO_InitStruct);
+    HAL_GPIO_Init(YAW_M_IN_A_GPIO_Port, &GPIO_InitStruct);
 
     /* USER CODE BEGIN TIM17_MspPostInit 1 */
 
     /* USER CODE END TIM17_MspPostInit 1 */
+  }
+  else if(htim->Instance==TIM20)
+  {
+    /* USER CODE BEGIN TIM20_MspPostInit 0 */
+
+    /* USER CODE END TIM20_MspPostInit 0 */
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    /**TIM20 GPIO Configuration
+    PB2     ------> TIM20_CH1
+    */
+    GPIO_InitStruct.Pin = PWM_1_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF3_TIM20;
+    HAL_GPIO_Init(PWM_1_GPIO_Port, &GPIO_InitStruct);
+
+    /* USER CODE BEGIN TIM20_MspPostInit 1 */
+
+    /* USER CODE END TIM20_MspPostInit 1 */
   }
 
 }
@@ -643,18 +638,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
   */
 void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* htim_pwm)
 {
-  if(htim_pwm->Instance==TIM1)
-  {
-    /* USER CODE BEGIN TIM1_MspDeInit 0 */
-
-    /* USER CODE END TIM1_MspDeInit 0 */
-    /* Peripheral clock disable */
-    __HAL_RCC_TIM1_CLK_DISABLE();
-    /* USER CODE BEGIN TIM1_MspDeInit 1 */
-
-    /* USER CODE END TIM1_MspDeInit 1 */
-  }
-  else if(htim_pwm->Instance==TIM2)
+  if(htim_pwm->Instance==TIM2)
   {
     /* USER CODE BEGIN TIM2_MspDeInit 0 */
 
@@ -697,6 +681,17 @@ void HAL_TIM_PWM_MspDeInit(TIM_HandleTypeDef* htim_pwm)
     /* USER CODE BEGIN TIM15_MspDeInit 1 */
 
     /* USER CODE END TIM15_MspDeInit 1 */
+  }
+  else if(htim_pwm->Instance==TIM20)
+  {
+    /* USER CODE BEGIN TIM20_MspDeInit 0 */
+
+    /* USER CODE END TIM20_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_TIM20_CLK_DISABLE();
+    /* USER CODE BEGIN TIM20_MspDeInit 1 */
+
+    /* USER CODE END TIM20_MspDeInit 1 */
   }
 
 }

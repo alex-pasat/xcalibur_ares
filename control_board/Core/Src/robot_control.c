@@ -6,24 +6,6 @@
 
 #include <stdint.h>
 
-// TODO: add target bevel angle received from SPI (type of knife)
-
-const sharpening_parameters_t sharpening_params[N_KNIFE_TYPES] = {
-  [KNIFETYPE_CHEF] = {.target_bevel_angle_deg = 20.0f},
-  [KNIFETYPE_PARING] = {.target_bevel_angle_deg = 15.0f},
-  [KNIFETYPE_GYOTO] = {.target_bevel_angle_deg = 18.0f},
-  [KNIFETYPE_JAP_UTIL] = {.target_bevel_angle_deg = 10.0f},
-  // TODO: set thse to actual sharpening params
-};
-
-static knife_type_t current_knife_type = KNIFETYPE_CHEF;
-
-// -- Knife Parameters --------------------------------------------------------
-
-void Ctrl_SetKnifeType(knife_type_t type) {
-  current_knife_type = type;
-}
-
 // -- Helper Functions --------------------------------------------------------
 
 
@@ -96,16 +78,23 @@ void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
   ctrl->drv = drv;
   ctrl->enc = enc;
   ctrl->target_rps = 0.0f;
+  ctrl->last_target_rps = 0.0f;
   ctrl->dt = dt;
-  ctrl->enabled = false;
 
   qPID_Setup(&ctrl->pid, pid_gains.Kc, pid_gains.Ki, pid_gains.Kd, dt);
+
+  qPID_SetSaturation(&ctrl->pid, ctrl->drv->MIN_DUTY_CYCLE, 1.0f);
+
   DRV8251_Init(drv); // Initialize the motor driver
   if (enc != NULL) Encoder_Init(enc); // Initialize the encoder
 }
 
 void MotorCtrl_SetTarget(motor_ctrl_t *ctrl, float target_rps) {
   ctrl->target_rps = target_rps;
+  if (ctrl->target_rps == 0.0f) {
+    qPID_Reset(&ctrl->pid);
+    DRV8251_Coast(ctrl->drv);
+  }
 }
 
 void MotorCtrl_Stop(motor_ctrl_t *ctrl) {
@@ -113,35 +102,38 @@ void MotorCtrl_Stop(motor_ctrl_t *ctrl) {
   qPID_Reset(&ctrl->pid);
 }
 
-void MotorCtrl_Enable(motor_ctrl_t *ctrl) { ctrl->enabled = true; }
-
 void MotorCtrl_Disable(motor_ctrl_t *ctrl) {
-  ctrl->enabled = false;
   DRV8251_Coast(ctrl->drv);
   qPID_Reset(&ctrl->pid);
 }
 
-void MotorCtrl_SetKnifeType(knife_type_t type) {
-  // TODO: Implement knife type setting logic
-}
-
 void MotorCtrl_Update(motor_ctrl_t *ctrl) {
-  if (!ctrl->enabled) return;
-
-  // Read current speed from encoder
-  float current_rps = Encoder_ComputeVelocity(ctrl->enc, ctrl->dt);
-  
-  // Compute control action using PID controller
-  float control_signal = qPID_Control(
-    &ctrl->pid, ctrl->target_rps, current_rps);
-  
-  // Set motor speed based on control signal
-  DRV8251_SetSpeed(ctrl->drv, control_signal);
-
-  ctrl->current_ma = CurrentSense_GetCurrentmA(&ctrl->curr_config);
-
+  ctrl->current_rps = Encoder_ComputeVelocity(ctrl->enc, ctrl->dt);
   ctrl->current_angle_deg = Encoder_GetAngleDeg(ctrl->enc);
 
+  if (ctrl->target_rps == 0.0f) {
+    // If target is zero, just coast and reset PID
+    qPID_Reset(&ctrl->pid);
+    DRV8251_Coast(ctrl->drv);
+    return;
+  }
+
+  // Update saturation and reset integrator on direction change
+  bool going_fwd = ctrl->target_rps >= 0.0f;
+  bool was_fwd   = ctrl->last_target_rps >= 0.0f;
+
+  if (going_fwd != was_fwd) {
+    qPID_Reset(&ctrl->pid);
+    if (going_fwd)
+      qPID_SetSaturation(&ctrl->pid,  ctrl->drv->MIN_DUTY_CYCLE, 1.0f);
+    else
+      qPID_SetSaturation(&ctrl->pid, -1.0f, -ctrl->drv->MIN_DUTY_CYCLE);
+  }
+
+  float duty = qPID_Control(&ctrl->pid, ctrl->target_rps, ctrl->current_rps);
+  DRV8251_SetDuty(ctrl->drv, duty);
+
+  ctrl->current_ma      = CurrentSense_GetCurrentmA(&ctrl->curr_config);
   ctrl->limit_triggered = debounce_sensor(ctrl->limit_sw);
-  ctrl->hall_triggered = debounce_sensor(ctrl->hall_effect);
+  ctrl->hall_triggered  = debounce_sensor(ctrl->hall_effect);
 }

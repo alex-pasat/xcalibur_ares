@@ -31,12 +31,36 @@ typedef enum {
 } robot_signal_t;
 
 typedef enum {
-  ROBOT_HMI_CMD_NONE           = 0x00,
-  ROBOT_HMI_CMD_KNIFE_CLAMPED  = 0x01,
-  ROBOT_HMI_CMD_KNIFE_DONE     = 0x02,
-  ROBOT_HMI_CMD_KNIFE_REMOVED  = 0x03,
-  // TODO: add more commands as needed
+  ROBOT_HMI_CMD_NONE               = 0x00,
+  ROBOT_HMI_CMD_KNIFE_CLAMPED      = 0x01,
+  ROBOT_HMI_CMD_KNIFE_DONE         = 0x02,
+  ROBOT_HMI_CMD_KNIFE_REMOVED      = 0x03,
+  ROBOT_HMI_CMD_KNIFE_NOT_DETECTED = 0x04,
+  ROBOT_HMI_CMD_RPI_DETECTED       = 0x05,
 } robot_hmi_command_t;
+
+typedef enum {
+  NONE = 0x00,
+  KNIFETYPE_CHEF,
+  KNIFETYPE_PARING,
+  KNIFETYPE_GYOTO,
+  KNIFETYPE_JAP_UTIL,
+  N_KNIFE_TYPES
+} knife_type_t;
+
+typedef enum {
+  KNIFETYPE_NONE,
+  KNIFETYPE_CHEF_CMD,
+  KNIFETYPE_PARING_CMD,
+  KNIFETYPE_GYOTO_CMD,
+  KNIFETYPE_JAP_UTIL_CMD,
+  REQUESTING_DATA = 0x20,
+} hmi_to_robot_command_t;
+
+typedef struct {
+  float target_bevel_angle_deg;
+  // etc..
+} sharpening_parameters_t;
 
 //-- Function Prototypes ------------------------------------------------------
 

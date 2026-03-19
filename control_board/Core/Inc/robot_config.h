@@ -15,14 +15,10 @@
 #define TIMER_PSC 0
 #define TIMER_PWM_FREQ_HZ 50000 // Desired PWM frequency for DRV8251
 
-// TODO: should this be hardcoded or computed based on the timer configuration?
-#define CONTROL_TIME_STEP_S 0.01f // 10 ms control loop period
-
-// Gear Ratios TODO: set these to the actual gear ratios
-#define GEAR_RATIO_ROLL 50.0f
+// time step for control loop updates
+#define CONTROL_TIME_STEP_S 0.001f
 
 #define SPI_BUF_SIZE 4
-#define USB_BUF_SIZE 1024
 
 #define ADC_NUM_CHANNELS 3
 

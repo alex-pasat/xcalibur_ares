@@ -11,19 +11,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef enum {
-  KNIFETYPE_CHEF,
-  KNIFETYPE_PARING,
-  KNIFETYPE_GYOTO,
-  KNIFETYPE_JAP_UTIL,
-  N_KNIFE_TYPES,
-} knife_type_t;
-
-typedef struct {
-  float target_bevel_angle_deg;
-  // etc..
-} sharpening_parameters_t;
-
 typedef struct {
   GPIO_TypeDef *port;
   uint32_t pin;
@@ -53,8 +40,10 @@ typedef struct {
   uint32_t adc_pin;   // Optional ADC pin
   current_sense_config_t curr_config; // Configuration for current sensing
 
-  bool enabled;
+  uint16_t GEAR_RATIO;
+
   float target_rps; // Desired speed (rev/s)
+  float last_target_rps; // Last target speed (rev/s)
   float dt;         // Control loop period (seconds)
 
   // cached values
@@ -64,10 +53,6 @@ typedef struct {
   bool limit_triggered; // Whether the limit switch is currently triggered
   bool hall_triggered; // Whether the hall effect sensor is currently triggered
 } motor_ctrl_t;
-
-// -- Knife Parameters --------------------------------------------------------
-
-void Ctrl_SetKnifeType(knife_type_t type);
 
 // -- Stepper Control API -----------------------------------------------------
 
@@ -113,8 +98,6 @@ void MotorCtrl_Init(motor_ctrl_t *ctrl, drv8251_config_t *drv,
 void MotorCtrl_SetTarget(motor_ctrl_t *ctrl, float target_rps);
 
 void MotorCtrl_Stop(motor_ctrl_t *ctrl);
-
-void MotorCtrl_Enable(motor_ctrl_t *ctrl);
 
 void MotorCtrl_Disable(motor_ctrl_t *ctrl);
 

@@ -17,8 +17,6 @@
 // -- DEFINES -----------------------------------------------------------------
 #define DRV8251_MAX_PWM 200000 // Max Frequency 200kHz
 
-#define DRV8251_MIN_DUTY_CYCLE 0.001f // Minimum duty cycle to overcome static friction
-
 // -- TYPE DEFINITIONS --------------------------------------------------------
 typedef enum {
     DRV8251_STATE_COAST = 0,   // IN1=0, IN2=0 — high-Z / sleep
@@ -41,17 +39,14 @@ typedef struct {
     TIM_HandleTypeDef *in2_tim;
     uint32_t in2_tim_channel;
 
-    uint32_t MIN_RPM;
-    uint32_t MAX_RPM;
-
-    drv8251_state_t state; // current state of the motor
-
-    // -- Speed: -1.0 (full reverse) to 1.0 (full forward) --
-    float speed; // desired speed [-1.0, 1.0]
+    float MIN_DUTY_CYCLE;
+    float MAX_RPS;
 
     // -- PWM config --
+    float speed_rps;
     bool dir_inverted;
     uint32_t tim_autoreload;
+    float duty; // current duty cycle
 
 } drv8251_config_t;
 
@@ -64,9 +59,19 @@ typedef struct {
 void DRV8251_Init(drv8251_config_t *config);
 
 /**
+ * @brief Set the PWM duty cycle for the motor. Positive values set forward
+ * @param config  Pointer to driver configuration structure.
+ * @param duty    Target duty cycle. Duty between -1 (reverse) and 1 (forward).
+ */
+void DRV8251_SetDuty(drv8251_config_t *config, float duty);
+
+/**
  * @brief Set motor speed and direction.
- * @param speed  -1.0 = full reverse, 0.0 = coast, +1.0 = full forward.
- *               Values are clamped to [-1.0, 1.0].
+ * @param config  Pointer to driver configuration structure.
+ * @param speed   Target speed in RPS. Sign determines direction. Magnitude is
+ *                clamped to MAX_RPS.
+ *                If speed is very low (below DRV8251_MIN_DUTY_CYCLE), motor will be
+ *                coasted instead to avoid stalling.
  */
 void DRV8251_SetSpeed(drv8251_config_t *config, float speed);
 

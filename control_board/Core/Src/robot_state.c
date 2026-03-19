@@ -48,6 +48,18 @@ extern motor_ctrl_t dc_roll;
 extern motor_ctrl_t dc_yaw;
 extern motor_ctrl_t clamp;
 
+// -- Knife Geometry ----------------------------------------------------------
+
+const sharpening_parameters_t sharpening_params[N_KNIFE_TYPES] = {
+  [KNIFETYPE_CHEF] = {.target_bevel_angle_deg = 20.0f},
+  [KNIFETYPE_PARING] = {.target_bevel_angle_deg = 15.0f},
+  [KNIFETYPE_GYOTO] = {.target_bevel_angle_deg = 18.0f},
+  [KNIFETYPE_JAP_UTIL] = {.target_bevel_angle_deg = 10.0f},
+  // TODO: set thse to actual sharpening params
+};
+
+static knife_type_t current_knife_type = KNIFETYPE_CHEF;
+
 // -- Function Prototypes -----------------------------------------------------
 
 typedef enum {
@@ -81,6 +93,7 @@ typedef enum {
 static tiny_hsm_result_t state_top(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 
 static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
+
 static tiny_hsm_result_t state_await_rpi_connect(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 static tiny_hsm_result_t state_await_knife_input(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
 static tiny_hsm_result_t state_await_geometry_header(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data);
@@ -125,6 +138,7 @@ static robot_state_id_t get_current_state(void) {
   if (robot_hsm.current == (tiny_hsm_state_t)state_mv_to_home) return STATE_MOVE_TO_HOME;
   if (robot_hsm.current == (tiny_hsm_state_t)state_sharpening_a) return STATE_SHARPENING_A;
   if (robot_hsm.current == (tiny_hsm_state_t)state_sharpening_b) return STATE_SHARPENING_B;
+
   if (robot_hsm.current == (tiny_hsm_state_t)state_estop) return STATE_ESTOP;
 
   return STATE_INVALID;
@@ -185,24 +199,37 @@ static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm,
     return tiny_hsm_result_signal_consumed;
 
   case tiny_hsm_signal_exit:
+    // clear the output buffer so old data isn't sent to HMI
+    tiny_ring_buffer_clear(&spi_tx_buf);
     return tiny_hsm_result_signal_consumed;
 
   case SIG_RECEIVED_SPI:
     if (data == NULL) {
       return tiny_hsm_result_signal_consumed;
     }
+    hmi_to_robot_command_t cmd = *(uint8_t*)data;
 
-    if (*(const uint8_t*)data == 0x20) {
-      // send confirmation back to HMI
-      tiny_ring_buffer_insert(&spi_tx_buf, (const uint8_t*)0x30);
-      return tiny_hsm_result_signal_consumed;
+    switch (cmd) {
+      case KNIFETYPE_CHEF:
+      case KNIFETYPE_PARING:
+      case KNIFETYPE_GYOTO:
+      case KNIFETYPE_JAP_UTIL:
+        // valid knife type received, set knife type and transition to next state
+        current_knife_type = (knife_type_t)cmd;
+        // tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+        tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_clamping);
+        break;
+
+      case REQUESTING_DATA:
+        uint8_t response = ROBOT_HMI_CMD_RPI_DETECTED;
+        tiny_ring_buffer_insert(&spi_tx_buf, &response);
+        return tiny_hsm_result_signal_consumed;
+
+      default:
+        // invalid command, ignore
+        return tiny_hsm_result_signal_consumed;
     }
 
-    // knife_type_t knife_type = (knife_type_t)*(const uint8_t*)data;
-    // Ctrl_SetKnifeType(knife_type);
-
-    // once we set knife type, wait for USB command that knife is seen
-    // tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
     return tiny_hsm_result_signal_consumed;
 
   default:
@@ -215,8 +242,6 @@ static tiny_hsm_result_t state_await_knife_selection(tiny_hsm_t *hsm,
 static tiny_hsm_result_t state_await_rpi_connect(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data) {
   switch (signal) {
     case tiny_hsm_signal_entry:
-      return tiny_hsm_result_signal_consumed;
-
     case tiny_hsm_signal_exit:
       return tiny_hsm_result_signal_consumed;
 
@@ -256,8 +281,12 @@ static tiny_hsm_result_t state_await_knife_input(tiny_hsm_t *hsm,
       return tiny_hsm_result_signal_consumed;
     }
 
-    if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
-        strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
+    if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0) {
+      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+      return tiny_hsm_result_signal_consumed;
+    }
+
+    if (strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
       // TODO: change this to go to different state (maybe add error state?) and work with HMI
       tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
       return tiny_hsm_result_signal_consumed;
@@ -325,9 +354,9 @@ static tiny_hsm_result_t state_await_geometry_header(tiny_hsm_t *hsm, tiny_hsm_s
 
       if (strncmp((char*)pkt->buf, "FAIL", pkt->len) == 0 ||
         strncmp((char*)pkt->buf, "RECONNECTED", pkt->len) == 0) {
-      // TODO: change this to go to different state (maybe add error state?) and work with HMI
-      tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
-      return tiny_hsm_result_signal_consumed;
+        // TODO: change this to go to different state (maybe add error state?) and work with HMI
+        tiny_hsm_transition(hsm, (tiny_hsm_state_t)state_await_knife_input);
+        return tiny_hsm_result_signal_consumed;
       }
 
       feed_bytes(&knife_parser, pkt->buf, pkt->len);
@@ -555,6 +584,17 @@ static tiny_hsm_result_t state_sharpening_b(tiny_hsm_t *hsm, tiny_hsm_signal_t s
 
 // -- FAULT / ESTOP STATE -----------------------------------------------------
 
+// static tiny_hsm_result_t state_comm_fault(tiny_hsm_t *hsm, tiny_hsm_signal_t signal, const void *data) {
+//   switch (signal) {
+//     case tiny_hsm_signal_entry:
+//     case tiny_hsm_signal_exit:
+//       return tiny_hsm_result_signal_consumed;
+
+//     default:
+//       return tiny_hsm_result_signal_deferred;
+//   }
+// }
+
 static tiny_hsm_result_t state_estop(tiny_hsm_t *hsm, tiny_hsm_signal_t sig,
                                      const void *data) {
   switch (sig) {
@@ -575,12 +615,13 @@ static tiny_hsm_result_t state_estop(tiny_hsm_t *hsm, tiny_hsm_signal_t sig,
 
 void RobotState_Init(void) {
   // Initialize ring buffers
-  memset(&spi_rx_buf, 0, sizeof(spi_rx_buf));
-  memset(&spi_tx_buf, 0, sizeof(spi_tx_buf));
-  
-  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, SPI_BUF_SIZE, sizeof(uint8_t));
-  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, SPI_BUF_SIZE, sizeof(uint8_t));  
+  memset(&spi_rx_store, 0, sizeof(spi_rx_store));
+  memset(&spi_tx_store, 0, sizeof(spi_tx_store));
 
+  tiny_ring_buffer_init(&spi_rx_buf, spi_rx_store, sizeof(uint8_t), SPI_BUF_SIZE);
+  tiny_ring_buffer_init(&spi_tx_buf, spi_tx_store, sizeof(uint8_t), SPI_BUF_SIZE);  
+
+  spi_tx_raw = ROBOT_HMI_CMD_NONE;
   HAL_SPI_TransmitReceive_IT(&hspi1, &spi_tx_raw, &spi_rx_raw, 1);
 
   tiny_hsm_init((tiny_hsm_t*)&robot_hsm, &robot_hsm_config, (tiny_hsm_state_t)state_await_knife_selection);
@@ -677,7 +718,6 @@ void RobotState_Tick(void) {
     // send move complete signal and transition to idle
     break;
 
-
   case STATE_ESTOP: break; // TODO: maybe check if estop condition cleared and transition to idle or fault?
 
   default:
@@ -687,19 +727,7 @@ void RobotState_Tick(void) {
 
 // -- HAL Callbacks -----------------------------------------------------------
 
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
-  if (hspi->Instance == SPI1) {
-    // buffer the received byte into the SPI RX ring buffer
-    tiny_ring_buffer_insert(&spi_rx_buf, &spi_rx_raw);
-    
-    // pop next byte to transmit from the SPI TX ring buffer, or send empty byte if none
-    spi_tx_raw = ROBOT_HMI_CMD_NONE;
-    tiny_ring_buffer_remove(&spi_tx_buf, &spi_tx_raw);
 
-    // start next SPI transmit/receive
-    HAL_SPI_TransmitReceive_IT(hspi, &spi_tx_raw, &spi_rx_raw, 1);
-  }
-}
 
 #if 0
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h) {
