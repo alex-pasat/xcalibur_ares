@@ -62,7 +62,16 @@ const uint8_t *sharpening_frames[] = {
 /* SPI Commands*/
 #define SPI_CMD_SEND_KNIFE    0x10  
 #define SPI_CMD_POLL_STATUS   0x20  
-#define SPI_DUMMY_BYTE        0xFF  
+
+// --- SPI PROTOCOL COMMANDS FROM MAIN BOARD ---
+typedef enum {
+  ROBOT_HMI_CMD_NONE               = 0x00,
+  ROBOT_HMI_CMD_KNIFE_CLAMPED      = 0x01,
+  ROBOT_HMI_CMD_KNIFE_DONE         = 0x02,
+  ROBOT_HMI_CMD_KNIFE_REMOVED      = 0x03,
+  ROBOT_HMI_CMD_KNIFE_NOT_DETECTED = 0x04,
+  USB_CONNECTED                    = 0x05
+} robot_hmi_command_t;
 
 /* Using the STM32H7's Internal AXI SRAM */
 #define INTERNAL_FB_ADDRESS  0x24000000UL  
@@ -88,6 +97,7 @@ typedef enum {
 
 // Knife Selection
 typedef enum {
+    NONE,
     CHEF_KNIFE,
     PARING_KNIFE,
     GYUTO_KNIFE,
@@ -95,7 +105,7 @@ typedef enum {
 } KnifeType_t;
 
 // Initialize our starting states
-UI_State_t current_ui_state = STATE_SHARPENING;
+UI_State_t current_ui_state = STATE_KNIFE_SELECTION;
 KnifeType_t current_knife = CHEF_KNIFE;
 
 /* Private variables ---------------------------------------------------------*/
@@ -221,7 +231,7 @@ void Startup_Splash_Screen(void);
 void Play_Startup_Tune(void);
 uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
 void SPI_Send_Tool_Selection(KnifeType_t knife);
-uint8_t SPI_Poll_Main_Board(void);
+robot_hmi_command_t SPI_Poll_Main_Board(void);
 void L8_DrawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t percent);
 
 /**
@@ -271,9 +281,12 @@ int main(void)
   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
 
   /* Infinite loop */
-while (1)
-  {
-      // --- MAIN OVERSEEING STATE MACHINE ---
+  while (1)
+  {   
+      // =========================================================
+      // MAIN UI STATE MACHINE
+      // =========================================================
+      
       switch (current_ui_state) 
       {
           case STATE_KNIFE_SELECTION:
@@ -283,74 +296,83 @@ while (1)
               // SUB-FSM: KNIFE SCROLLING
               // ---------------------------------------------------
               if (Button_Pressed(RIGHT_BTTN_GPIO_Port, RIGHT_BTTN_Pin)) {
-                  // Cycle right through 4 knives
                   if (current_knife == CHEF_KNIFE) { current_knife = PARING_KNIFE; Update_Tool_UI(1, "Paring Knife", paring_knife_image, 2); }
                   else if (current_knife == PARING_KNIFE) { current_knife = GYUTO_KNIFE; Update_Tool_UI(1, "Japanese Gyuto Knife", gyuto_knife_image, 2); }
                   else if (current_knife == GYUTO_KNIFE) { current_knife = JAPANESE_UTILITY_KNIFE; Update_Tool_UI(1, "Japanese Utility Knife", utility_knife_image, 2); }
                   else if (current_knife == JAPANESE_UTILITY_KNIFE) { current_knife = CHEF_KNIFE; Update_Tool_UI(1, "German Chef Knife", chef_knife_image, 2); }
-                  
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
               }
               else if (Button_Pressed(LEFT_BTTN_GPIO_Port, LEFT_BTTN_Pin)) {
-                  // Cycle left through 4 knives
                   if (current_knife == CHEF_KNIFE) { current_knife = JAPANESE_UTILITY_KNIFE; Update_Tool_UI(1, "Japanese Utility", utility_knife_image, 2); }
                   else if (current_knife == JAPANESE_UTILITY_KNIFE) { current_knife = GYUTO_KNIFE; Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image, 2); }
                   else if (current_knife == GYUTO_KNIFE) { current_knife = PARING_KNIFE; Update_Tool_UI(1, "Paring Knife", paring_knife_image, 2); }
                   else if (current_knife == PARING_KNIFE) { current_knife = CHEF_KNIFE; Update_Tool_UI(1, "German Chef Knife", chef_knife_image, 2); }
-                  
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
               }
               // ---------------------------------------------------
               // SELECTION TRIGGER -> Transition to next System State
               // ---------------------------------------------------
               else if (Button_Pressed(SELECT_BTTN_GPIO_Port, SELECT_BTTN_Pin)) {
-                  // 1. Send SPI Packet
                   SPI_Send_Tool_Selection(current_knife);
-                  //Blink green led
-                  
-                  // 2. Change Screen
-                  Update_Tool_UI(0, "Please Enter Knife", knife_insert_image, 2); // Pass NULL to hide image, 0 to hide arrows
+                  Update_Tool_UI(0, "Please Enter Knife", knife_insert_image, 2); 
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
-                  
-                  // 3. Advance Main FSM
+                  HAL_Delay(500);
                   current_ui_state = STATE_INSERTION;
               }
               break;
 
           case STATE_INSERTION:
-              // Poll main board until it says the knife is detected
-              while (SPI_Poll_Main_Board() != 1) { // 1 = Knife Found
-                    // Blink Green LED while waiting for knife insertion
-                    HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
-                    HAL_Delay (200);
-                    HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
-                    HAL_Delay (200);
-              } 
-              Update_Tool_UI(0, "Let go of knife!", hands_off_image, 2);
-              HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+              // Blink the green LED to show it's actively waiting
+              HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
+              HAL_Delay (200);
+              HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
+              HAL_Delay (200);
+
+              // 1. Poll the main board exactly ONCE and save the answer!
+              robot_hmi_command_t status = SPI_Poll_Main_Board();
+
+              // 2. Check the saved answer
+              if (status == ROBOT_HMI_CMD_KNIFE_NOT_DETECTED) {
                   
-              // Advance FSM
-              current_ui_state = STATE_TOOL_LET_GO;
+                  // Show the timeout error message
+                  Update_Tool_UI(0, "TIMEOUT - NO KNIFE!", knife_insert_image, 2); 
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  HAL_Delay(2000); // Give the user 2 seconds to read the warning
+                  
+                  // 3. THE FIX: Manually redraw the main menu BEFORE changing states!
+                  switch(current_knife) {
+                      case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image,2); break;
+                      case PARING_KNIFE: Update_Tool_UI(1, "Paring Knife", paring_knife_image,2); break;
+                      case GYUTO_KNIFE: Update_Tool_UI(1, "Gyuto Knife", gyuto_knife_image,2); break;
+                      case JAPANESE_UTILITY_KNIFE: Update_Tool_UI(1, "Japanese Utility", utility_knife_image,2); break;
+                  }
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  
+                  // Now it is safe to return to the selection loop
+                  current_ui_state = STATE_KNIFE_SELECTION;
+              }
+              else if (status == ROBOT_HMI_CMD_KNIFE_CLAMPED ){
+                  
+                  Update_Tool_UI(0, "Let go of knife!", hands_off_image, 2);
+                  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
+                  current_ui_state = STATE_TOOL_LET_GO;
+                  
+              }
               break;
 
           case STATE_TOOL_LET_GO:
-              // Block for 4 seconds to let the user back away safely
               for (int i = 0; i < 10; i++) {
                 HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
                 HAL_Delay (200);
                 HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_RESET);
                 HAL_Delay (200);
               }
-              
-              // The main board operates the clamp now. Change UI to sharpening.
               for (int i = 0; i <= 5; i++) {
                   Update_Tool_UI(0, "Sharpening in progress...", sharpening_frames[i], 2);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   HAL_Delay(100);
               }
-              // Record the start time of sharpening for loading bar
               sharpening_start_time = HAL_GetTick();
-              
               current_ui_state = STATE_SHARPENING;
               break;
 
@@ -358,37 +380,24 @@ while (1)
               HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_SET);
               HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
 
-              // 1. Calculate Progress
               uint32_t current_time = HAL_GetTick();
               uint32_t elapsed_ms = current_time - sharpening_start_time;
-              
-              // 10% every 20 seconds (20,000 ms)
               uint8_t progress_percent = (elapsed_ms / 20000) * 10; 
-              
-              // Cap the timer-based progress at 90%
-              if (progress_percent > 90) {
-                  progress_percent = 90;
-              }
+              if (progress_percent > 90) { progress_percent = 90; }
 
               for (int i = 0; i <= 5; i++) {
                   Update_Tool_UI(0, "Sharpening in progress...", sharpening_frames[i], 2);
-                  //Draw loading bar based on progress_percent
                   L8_DrawProgressBar(90, 580, 300, 30, progress_percent);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   HAL_Delay(100);
               }
-              // Poll main board until sharpening is completely finished
-              if (SPI_Poll_Main_Board() == 2) { // 2 = Sharpening Done
-                  // jump to 100% on loading bar
+              if (SPI_Poll_Main_Board() == ROBOT_HMI_CMD_KNIFE_DONE) { 
                   L8_DrawProgressBar(90, 580, 300, 30, 100);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
                   HAL_Delay(600);
-                  // Play success chime!
                   Play_Startup_Tune(); 
-                  
                   Update_Tool_UI(0, "Knife sharpened! Remove knife.", xcalibur_green_image, 2);
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
-                  
                   current_ui_state = STATE_DONE_REMOVE;
               }
               break;
@@ -398,10 +407,8 @@ while (1)
                 HAL_Delay (200);
                 HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_RESET);
                 HAL_Delay (200);
-              // Poll main board to check if the user physically pulled it out
-              if (SPI_Poll_Main_Board() == 3) { // 3 = Knife Removed
+              if (SPI_Poll_Main_Board() == ROBOT_HMI_CMD_KNIFE_REMOVED) { 
                   sharpening_start_time = 0;
-                  // Redraw the specific knife they were just looking at
                   switch(current_knife) {
                       case CHEF_KNIFE: Update_Tool_UI(1, "German Chef Knife", chef_knife_image,2); break;
                       case PARING_KNIFE: Update_Tool_UI(1, "Paring Knife", paring_knife_image,2); break;
@@ -409,7 +416,6 @@ while (1)
                       case JAPANESE_UTILITY_KNIFE: Update_Tool_UI(1, "Japanese Utility", utility_knife_image,2); break;
                   }
                   HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
-                  
                   current_ui_state = STATE_KNIFE_SELECTION;
               }
               break;
@@ -418,21 +424,38 @@ while (1)
 }
 
 void SPI_Send_Tool_Selection(KnifeType_t knife){
-  uint8_t tx_buffer[2];
-  tx_buffer[0] = SPI_CMD_SEND_KNIFE; // Start Byte
-  tx_buffer[1] = (uint8_t)knife; // Knife Type
+  uint8_t tx_buffer[1];
+  tx_buffer[0] = (uint8_t)knife; // Knife Type
 
-  //one sided communication, no rx buffer needed
-  HAL_SPI_Transmit(&hspi1, tx_buffer, sizeof(tx_buffer), HAL_MAX_DELAY);
+  // 1. Manually pull CS LOW
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+
+  // 2. Transmit
+  HAL_SPI_Transmit(&hspi1, tx_buffer, sizeof(tx_buffer), 100);
+
+  // 3. Manually pull CS HIGH
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
 }
 
-uint8_t SPI_Poll_Main_Board(void){
-  uint8_t tx_buffer[1] = {SPI_CMD_POLL_STATUS}; // Command to ask main board for status update
+robot_hmi_command_t SPI_Poll_Main_Board(void){
+  uint8_t tx_buffer[1] = {SPI_CMD_POLL_STATUS}; 
+  uint8_t rx_buffer[1] = {0};
+  
+  // 1. Manually pull CS LOW
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+
+  // 2. Ask for status update
   HAL_SPI_Transmit(&hspi1, tx_buffer, sizeof(tx_buffer), 100);
-  uint8_t rx_buffer[1];
-  for(volatile int i = 0; i < 500; i++) {} //DELAY FOR PROCESSING
+  
+  for(volatile int i = 0; i < 500; i++) {} // DELAY FOR PROCESSING
+  
+  // 3. Receive answer
   HAL_SPI_Receive(&hspi1, rx_buffer, sizeof(rx_buffer), 100);
-  return rx_buffer[0]; // Return the status byte received from the main board
+
+  // 4. Manually pull CS HIGH
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+  
+  return (robot_hmi_command_t)rx_buffer[0]; 
 }
 
 /**
@@ -440,24 +463,17 @@ uint8_t SPI_Poll_Main_Board(void){
   */
 uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
 {
-    // 1. Check if the button is pressed (Pin goes to 3.3V / SET)
     if (HAL_GPIO_ReadPin(GPIOx, GPIO_Pin) == GPIO_PIN_SET) 
     {
-        HAL_Delay(50); // 50ms Debounce delay
-        
-        // --- PLAY BUTTON CLICK SOUND ---
+        HAL_Delay(50); 
         __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, 125);
         HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
         HAL_Delay(15); 
         HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-        // -------------------------------
-        
-        // 2. Wait for the user to let go (Pin drops back to 0V / RESET)
         while(HAL_GPIO_ReadPin(GPIOx, GPIO_Pin) == GPIO_PIN_SET) {} 
-        
-        return 1; // Button was successfully pressed and released
+        return 1; 
     }
-    return 0; // Not pressed
+    return 0; 
 }
 
 /**
@@ -465,44 +481,20 @@ uint8_t Button_Pressed(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin)
   */
 void Play_Startup_Tune(void)
 {   
-    uint16_t notes[] = {
-        1912, 0,    
-        1912, 0,    
-        2145, 0,    
-        2409, 0,    
-        2409, 0,    
-        2145        
-    };
-    
-    uint16_t durations[] = {
-        250, 240, 
-        200, 360, 
-        300, 150, 
-        250, 240, 
-        200, 360, 
-        300
-    };
-
+    uint16_t notes[] = { 1912, 0, 1912, 0, 2145, 0, 2409, 0, 2409, 0, 2145 };
+    uint16_t durations[] = { 250, 240, 200, 360, 300, 150, 250, 240, 200, 360, 300 };
     int total_steps = sizeof(notes) / sizeof(notes[0]);
 
     for(int i = 0; i < total_steps; i++) {
         uint16_t current_arr = notes[i];
-        
         if (current_arr == 0) {
             HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
             HAL_Delay(durations[i]);
         } else {
-            // Change pitch
             __HAL_TIM_SET_AUTORELOAD(&htim4, current_arr);
-            
-            // Set 50% duty cycle for maximum volume
             __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, current_arr / 2); 
-            
-            // Play note
             HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
             HAL_Delay(durations[i]);
-            
-            // Tiny 20ms gap to keep the rhythm crisp and punchy
             HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
             HAL_Delay(20);
         }
@@ -514,12 +506,8 @@ void Play_Startup_Tune(void)
   */
 void Startup_Splash_Screen(void)
 {
-    // 1. Wipe Layer 0 (SRAM) completely black
-    for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) {
-        fb[i] = L8_BLACK;
-    }
+    for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) { fb[i] = L8_BLACK; }
 
-    // 2. Expand Layer 1 to 350x295 for the XCalibur Logo
     LTDC_LayerCfgTypeDef pLayerCfg1 = {0};
     uint16_t splash_x = (LCD_WIDTH / 2) - (SPLASH_WIDTH / 2)+50;
     uint16_t splash_y = (LCD_HEIGHT / 2) - (SPLASH_HEIGHT / 2);
@@ -540,23 +528,14 @@ void Startup_Splash_Screen(void)
     HAL_LTDC_ConfigColorKeying(&hltdc, 0x000000, 1);
     HAL_LTDC_EnableColorKeying(&hltdc, 1);
 
-    // 3. Force hardware to draw the splash screen
     HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
-
-    // 4. Play the musical hardware PWM tune! 
     Play_Startup_Tune();
-    
-    // 5. Wait for the remaining time (make the splash last 4 seconds total)
     HAL_Delay(3000);
-    
-    // 6. BLACKOUT: Disable Layer 1 to hide the image instantly
     __HAL_LTDC_LAYER_DISABLE(&hltdc, 1);
+
+    while (SPI_Poll_Main_Board() != USB_CONNECTED){}
     HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_IMMEDIATE);
-    
-    // 7. Hold the blackout for half a second 
     HAL_Delay(500);
-    
-    // 8. Re-enable Layer 1 so the normal UI can use it again
     __HAL_LTDC_LAYER_ENABLE(&hltdc, 1);
 }
 
@@ -565,7 +544,6 @@ void Startup_Splash_Screen(void)
   */
 void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_array, uint8_t text_size)
 {
-    // 1. HANDLE LAYER 1 (THE IMAGE)
     if (image_array != NULL) {
         LTDC_LayerCfgTypeDef pLayerCfg1 = {0};
         uint16_t center_x = (LCD_WIDTH / 2) - (IMAGE_WIDTH / 2);  
@@ -586,28 +564,19 @@ void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_arr
         HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg1, 1);
         HAL_LTDC_ConfigColorKeying(&hltdc, 0x000000, 1);
         HAL_LTDC_EnableColorKeying(&hltdc, 1);
-        
-        // Re-enable the layer just in case it was turned off previously!
         __HAL_LTDC_LAYER_ENABLE(&hltdc, 1); 
     } else {
-        // If NULL is passed, actively turn off Layer 1 so the image disappears
         __HAL_LTDC_LAYER_DISABLE(&hltdc, 1);
     }
 
-    // 2. WIPE THE OLD TEXT CLEAN
     L8_FillRect(0, 520, UI_WIDTH, 40, L8_BLACK);
-
-    // 3. WIPE THE OLD ARROWS CLEAN
     L8_FillRect(0, 380, UI_WIDTH, 40, L8_BLACK);
 
-    // 4. ALWAYS DRAW THE NEW TEXT (Even if arrows are hidden)
     uint16_t text_width = strlen(title) * 18;
     uint16_t start_x = (UI_WIDTH > text_width) ? (UI_WIDTH - text_width) / 2 : 5;
     L8_DrawString(start_x, 530, title, L8_WHITE, text_size);
 
-    // 5. DRAW ARROWS ONLY IF SHOW_UI IS 1
     if (show_ui) {
-        // Draw Left Arrow (<---)
         uint16_t left_tip_x = 60, left_tip_y = 400;
         L8_FillRect(left_tip_x, left_tip_y - 2, 45, 4, L8_WHITE); 
         for (int i=0; i < 18; i++) { 
@@ -617,7 +586,6 @@ void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_arr
             L8_DrawPixel(left_tip_x + i, left_tip_y + i + 1, L8_WHITE); 
         }
         
-        // Draw Right Arrow (--->)
         uint16_t right_tip_x = 420, right_tip_y = 400;
         L8_FillRect(right_tip_x - 45, right_tip_y - 2, 45, 4, L8_WHITE);
         for (int i=0; i < 18; i++) { 
@@ -634,10 +602,7 @@ void Update_Tool_UI(uint8_t show_ui, const char* title, const uint8_t* image_arr
   */
 void GUI_Framework(void)
 {
-  for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) {
-      fb[i] = L8_BLACK;
-  }
-  
+  for (uint32_t i = 0; i < (LCD_WIDTH * LCD_HEIGHT); i++) { fb[i] = L8_BLACK; }
   L8_FillRect(0, 0, UI_WIDTH, BANNER_HEIGHT, L8_BLUE);
   L8_DrawString(60, 28, "XCALIBUR ARES", L8_WHITE, 3);
 }
@@ -647,51 +612,30 @@ void GUI_Framework(void)
   */
 void L8_DrawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t percent) 
 {
-    // 1. Cap percentage at 100 just in case
     if (percent > 100) percent = 100;
+    L8_FillRect(x, y, width, 2, L8_WHITE); 
+    L8_FillRect(x, y + height - 2, width, 2, L8_WHITE); 
+    L8_FillRect(x, y, 2, height, L8_WHITE); 
+    L8_FillRect(x + width - 2, y, 2, height, L8_WHITE); 
 
-    // 2. Draw a White Outline
-    L8_FillRect(x, y, width, 2, L8_WHITE); // Top edge
-    L8_FillRect(x, y + height - 2, width, 2, L8_WHITE); // Bottom edge
-    L8_FillRect(x, y, 2, height, L8_WHITE); // Left edge
-    L8_FillRect(x + width - 2, y, 2, height, L8_WHITE); // Right edge
-
-    // 3. Calculate how many pixels wide the red fill should be
-    // We subtract 4 from the width to stay inside the 2px borders
     uint16_t fill_width = ((width - 4) * percent) / 100;
-
-    // 4. Draw the Red Fill
-    if (fill_width > 0) {
-        L8_FillRect(x + 2, y + 2, fill_width, height - 4, L8_RED);
-    }
-    
-    // 5. Blank out the remaining empty space with Black
-    if (fill_width < (width - 4)) {
-        L8_FillRect(x + 2 + fill_width, y + 2, (width - 4) - fill_width, height - 4, L8_BLACK);
-    }
+    if (fill_width > 0) { L8_FillRect(x + 2, y + 2, fill_width, height - 4, L8_RED); }
+    if (fill_width < (width - 4)) { L8_FillRect(x + 2 + fill_width, y + 2, (width - 4) - fill_width, height - 4, L8_BLACK); }
 }
 
 /**
   * @brief Prints a string using full ASCII table
-  * @param scale: size multiplier
   */
 void L8_DrawString(uint16_t x, uint16_t y, const char* str, uint8_t colorIndex, uint8_t scale) 
 {
     while (*str) {
         char c = *str;
-        
-        if (c < 32 || c > 126) {
-            c = '?';
-        }
-
+        if (c < 32 || c > 126) { c = '?'; }
         uint8_t glyph_index = c - 32;
-
         for (int i = 0; i < 8; i++) {
             uint8_t row = font8x8_ascii[glyph_index][i];
             for (int j = 0; j < 8; j++) {
-                if (row & (0x80 >> j)) {
-                    L8_FillRect(x + (j * scale), y + (i * scale), scale, scale, colorIndex);
-                }
+                if (row & (0x80 >> j)) { L8_FillRect(x + (j * scale), y + (i * scale), scale, scale, colorIndex); }
             }
         }
         x += (8 * scale) + 2; 
@@ -706,7 +650,6 @@ void MPU_Config(void)
 {
     MPU_Region_InitTypeDef MPU_InitStruct = {0};
     HAL_MPU_Disable();
-
     MPU_InitStruct.Enable = MPU_REGION_ENABLE;
     MPU_InitStruct.BaseAddress = INTERNAL_FB_ADDRESS; 
     MPU_InitStruct.Size = MPU_REGION_SIZE_512KB;
@@ -719,27 +662,21 @@ void MPU_Config(void)
     MPU_InitStruct.SubRegionDisable = 0x00;
     MPU_InitStruct.DisableExec = MPU_INSTRUCTION_ACCESS_ENABLE;
     HAL_MPU_ConfigRegion(&MPU_InitStruct);
-
     HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
 }
 
 void L8_DrawPixel(uint16_t x, uint16_t y, uint8_t colorIndex)
 {
     if (x >= UI_WIDTH || y >= UI_HEIGHT) return;
-
-    // Rotate coordinates to map logical portrait UI to physical landscape glass
     uint16_t phys_x = y;
     uint16_t phys_y = (LCD_HEIGHT - 1) - x;
-
     fb[phys_y * LCD_WIDTH + phys_x] = colorIndex;
 }
 
 void L8_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t colorIndex)
 {
     for (uint16_t i = 0; i < h; i++) {
-        for (uint16_t j = 0; j < w; j++) {
-            L8_DrawPixel(x + j, y + i, colorIndex);
-        }
+        for (uint16_t j = 0; j < w; j++) { L8_DrawPixel(x + j, y + i, colorIndex); }
     }
 }
 
@@ -770,10 +707,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
   
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-      Error_Handler();
-  }
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) { Error_Handler(); }
 
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
@@ -786,10 +720,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
-  {
-      Error_Handler();
-  }
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK) { Error_Handler(); }
 
   PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
   PeriphClkInitStruct.PLL3.PLL3M = 4;        
@@ -801,10 +732,7 @@ void SystemClock_Config(void)
   PeriphClkInitStruct.PLL3.PLL3VCOSEL = RCC_PLL3VCOWIDE;
   PeriphClkInitStruct.PLL3.PLL3FRACN = 0;
   
-  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
-  {
-      Error_Handler();
-  }
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) { Error_Handler(); }
 }
 
 /**
@@ -825,15 +753,11 @@ static void MX_LTDC_Init(void)
   hltdc.Init.AccumulatedActiveH = 512;
   hltdc.Init.TotalWidth = 928;
   hltdc.Init.TotalHeigh = 525;
-  
   hltdc.Init.Backcolor.Blue = 0;
   hltdc.Init.Backcolor.Green = 0;
   hltdc.Init.Backcolor.Red = 0;
   
-  if (HAL_LTDC_Init(&hltdc) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_LTDC_Init(&hltdc) != HAL_OK) { Error_Handler(); }
 }
 
 /**
@@ -842,35 +766,27 @@ static void MX_LTDC_Init(void)
 void LCD_InitLayer(void)
 {
     LTDC_LayerCfgTypeDef pLayerCfg = {0};
-
-    // ---------------------------------------------------------
-    // LAYER 0: Framework, Arrows, Texts (L8 Mode)
-    // ---------------------------------------------------------
     pLayerCfg.WindowX0      = 0; 
     pLayerCfg.WindowX1      = LCD_WIDTH - 1; 
     pLayerCfg.WindowY0      = 0;                         
     pLayerCfg.WindowY1      = LCD_HEIGHT - 1;
-    
     pLayerCfg.PixelFormat   = LTDC_PIXEL_FORMAT_L8; 
     pLayerCfg.FBStartAdress = INTERNAL_FB_ADDRESS; 
     pLayerCfg.ImageWidth    = LCD_WIDTH; 
     pLayerCfg.ImageHeight   = LCD_HEIGHT; 
     pLayerCfg.Alpha         = 255;          
-    
     pLayerCfg.BlendingFactor1 = LTDC_BLENDING_FACTOR1_CA;
     pLayerCfg.BlendingFactor2 = LTDC_BLENDING_FACTOR2_CA;
 
-    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg, 0) != HAL_OK) { 
-        Error_Handler();
-    }
+    if (HAL_LTDC_ConfigLayer(&hltdc, &pLayerCfg, 0) != HAL_OK) { Error_Handler(); }
 
-    // --- CONFIGURE COLOR PALETTE FOR LAYER 0 ---
-    static uint32_t Layer0_CLUT[3];
-    Layer0_CLUT[L8_BLACK] = 0xFF000000; // Black 
-    Layer0_CLUT[L8_BLUE]  = 0xFF34BFFF; // Blue Banner 
-    Layer0_CLUT[L8_WHITE] = 0xFFFFFFFF; // White Text/Arrows
+    static uint32_t Layer0_CLUT[4];
+    Layer0_CLUT[L8_BLACK] = 0xFF000000; 
+    Layer0_CLUT[L8_BLUE]  = 0xFF34BFFF; 
+    Layer0_CLUT[L8_WHITE] = 0xFFFFFFFF; 
+    Layer0_CLUT[L8_RED]   = 0xFFFF0000; 
 
-    HAL_LTDC_ConfigCLUT(&hltdc, Layer0_CLUT, 3, 0); 
+    HAL_LTDC_ConfigCLUT(&hltdc, Layer0_CLUT, 4, 0); 
     HAL_LTDC_EnableCLUT(&hltdc, 0);                 
 }
 
@@ -885,8 +801,12 @@ static void MX_SPI1_Init(void)
   hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  
+  // Software NSS ensures the clock can always fire freely
+  hspi1.Init.NSS = SPI_NSS_SOFT; 
+  
+  // Slow clock for initial hardware testing
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_256; 
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -901,10 +821,8 @@ static void MX_SPI1_Init(void)
   hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
   hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
   hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+
+  if (HAL_SPI_Init(&hspi1) != HAL_OK) { Error_Handler(); }
 }
 
 /**
@@ -913,45 +831,27 @@ static void MX_SPI1_Init(void)
 static void MX_TIM4_Init(void)
 {
   TIM_OC_InitTypeDef sConfigOC = {0};
-
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 199; // Set for 1MHz timer tick (assuming 200MHz APB)
+  htim4.Init.Prescaler = 199; 
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 249;    // Gives us roughly 4kHz default
+  htim4.Init.Period = 249;    
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK) { Error_Handler(); }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK) { Error_Handler(); }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) { Error_Handler(); }
 
-  /* --- MANUALLY ROUTE TIM4_CH1 TO PD12 --- */
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-  
-  // 1. Ensure Port D clock is running
   __HAL_RCC_GPIOD_CLK_ENABLE(); 
-  
-  // 2. Configure PD12 as Alternate Function Push-Pull
   GPIO_InitStruct.Pin = GPIO_PIN_12;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP; 
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  
-  // 3. The Magic Key: Connects this specific pin to TIM4!
   GPIO_InitStruct.Alternate = GPIO_AF2_TIM4; 
-  
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 }
 
@@ -961,39 +861,32 @@ static void MX_TIM4_Init(void)
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE(); // Crucial for PD12 (TIM4) to function!
+  __HAL_RCC_GPIOD_CLK_ENABLE(); 
 
-  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, GREEN_LED_Pin, GPIO_PIN_SET);
   HAL_GPIO_WritePin(GPIOE, RED_LED_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(DISP_GPIO_Port, DISP_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : RED_LED_Pin GREEN_LED_Pin */
   GPIO_InitStruct.Pin = RED_LED_Pin|GREEN_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-/* Configure GPIO pins on Port B: SELECT, DOWN, UP, LEFT */
   GPIO_InitStruct.Pin = SELECT_BTTN_Pin | DOWN_BTTN_Pin | UP_BTTN_Pin | LEFT_BTTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL; // Let your external 10k resistors do the work!
+  GPIO_InitStruct.Pull = GPIO_NOPULL; 
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /* Configure GPIO pin on Port D: RIGHT */
   GPIO_InitStruct.Pin = RIGHT_BTTN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(RIGHT_BTTN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : DISP_Pin */
   GPIO_InitStruct.Pin = DISP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -1007,8 +900,7 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   __disable_irq();
-  while (1)
-  {
+  while (1) {
       HAL_GPIO_TogglePin(RED_LED_GPIO_Port, RED_LED_Pin);
       HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
       for(volatile uint32_t i = 0; i < 20000000; i++) {} 
