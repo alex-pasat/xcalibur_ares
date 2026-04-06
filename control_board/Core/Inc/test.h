@@ -28,14 +28,15 @@ void Test_CurrentSensing(void);
 void Test_Characterization(void);
 void Test_Stepper(void);
 void Test_LimitSwitch(void);
-void Test_HallSensors(void);
 void Test_AdcDma(void);
 
 void Test_MinDuty(motor_ctrl_t *m);
-void Test_EncoderCPR(motor_ctrl_t *m);
+void Test_EncoderCPRHall(motor_ctrl_t *m, const char *nm);
 void Test_MaxSpeed(motor_ctrl_t *m, const char *nm);
 void Test_MinSpeed(motor_ctrl_t *m, const char *nm);
 void Test_Stiction(motor_ctrl_t *m, const char *nm);
 void Test_PID(motor_ctrl_t *m, const char *nm, float setpoint);
+
+void The_Test(void);
 
 #endif /* TEST_H */

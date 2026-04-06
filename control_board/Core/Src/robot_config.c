@@ -21,9 +21,9 @@
 
 #define PITCH_M_CPR 64.0f
 #define PITCH_M_GEAR_RATIO 150.0f
-#define PITCH_M_COUNTS_PER_REV 7600.0f
+#define PITCH_M_COUNTS_PER_REV 9600.0f
 
-#define ROLL_M_CPR 12.0f
+#define ROLL_M_CPR 7.0f
 #define ROLL_M_GEAR_RATIO 380.0f
 #define ROLL_M_COUNTS_PER_REV (ROLL_M_CPR * ROLL_M_GEAR_RATIO * 4.0f)
 
@@ -59,27 +59,29 @@ stepper_ctrl_t stepper_underpass = {
             
             .tim = &htim7,
 
-            // .steps_per_rev = 100,
-            .max_speed = 1000.0f, // TODO: set this to the actual max speed
-            .acceleration = 500.0f, // TODO: set this to the actual acceleration
+            .max_speed = 1000.0f,
+            .acceleration = 500.0f,
         },
     .limit_sw = &(gpio_sensor_t){
-        .port = GPIOE,
-        .pin = GPIO_PIN_9,
-        .threshold = 5,
-        .last_state = false,
-        .debounce_count = 0,
+        .port = UNDERPASS_LIMIT_GPIO_Port,
+        .pin = UNDERPASS_LIMIT_Pin,
+        .threshold = 0,
     },
+    .homing_direction = false,
+    .BACKOFF_STEPS = 50,
     .MICROSTEPS = DRV8834_MICROSTEPS,
+    .uSTEPS_PER_M = 27027.0f
 };
+
+stepper_ctrl_t *stepper_motors[] = {&stepper_underpass};
 
 // -- DC Motor Configurations -------------------------------------------------
 
-qPID_Gains_t pid_gains_pitch = {.Kc = 0.2f, .Ki = 1.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_roll = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_yaw = {.Kc = 6.7f, .Ki = 0.67f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_clamp = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
-qPID_Gains_t pid_gains_extra = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
+const qPID_Gains_t pid_gains_pitch = {.Kc = 1.2f, .Ki = 1.0f, .Kd = 0.0f};
+const qPID_Gains_t pid_gains_roll = {.Kc = 8.0f, .Ki = 0.67f, .Kd = 0.0f};
+const qPID_Gains_t pid_gains_yaw = {.Kc = 10.0f, .Ki = 0.67f, .Kd = 0.0f};
+const qPID_Gains_t pid_gains_clamp = {.Kc = 8.0f, .Ki = 0.67f, .Kd = 0.0f};
+const qPID_Gains_t pid_gains_extra = {.Kc = 1.0f, .Ki = 0.0f, .Kd = 0.0f};
 
 extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
@@ -99,8 +101,8 @@ drv8251_config_t dc_pitch_drv = {
     .in2_tim = &htim2,
     .in2_tim_channel = TIM_CHANNEL_2,
     .dir_inverted = true,
-    .STALL_DUTY_CYCLE = 0.11f,
-    .MIN_DUTY_CYCLE = 0.035f,
+    .STALL_DUTY_CYCLE = 0.12f,
+    .MIN_DUTY_CYCLE = 0.03f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -114,7 +116,8 @@ drv8251_config_t dc_roll_drv = {
     .in2_tim = &htim4,
     .in2_tim_channel = TIM_CHANNEL_4,
     .dir_inverted = true,
-    .MIN_DUTY_CYCLE = 0.60f,
+    .STALL_DUTY_CYCLE = 0.65f,
+    .MIN_DUTY_CYCLE = 0.61f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -127,12 +130,13 @@ drv8251_config_t dc_yaw_drv = {
     .in2_pin = YAW_M_IN_A_Pin,
     .in2_tim = &htim16,
     .in2_tim_channel = TIM_CHANNEL_1,
-    .dir_inverted = false,
-    .MIN_DUTY_CYCLE = 0.60f,
+    .dir_inverted = true,
+    .STALL_DUTY_CYCLE = 0.65f,
+    .MIN_DUTY_CYCLE = 0.61f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
-drv8251_config_t clamp_drv = {
+drv8251_config_t dc_clamp_drv = {
     .in1_port = KNIFECLAMP_M_IN_B_GPIO_Port,
     .in1_pin = KNIFECLAMP_M_IN_B_Pin,
     .in1_tim = &htim15,
@@ -141,8 +145,9 @@ drv8251_config_t clamp_drv = {
     .in2_pin = KNIFECLAMP_M_IN_A_Pin,
     .in2_tim = &htim15,
     .in2_tim_channel = TIM_CHANNEL_2,
-    .dir_inverted = false, // TODO: check wiring and set this correctly
-    .MIN_DUTY_CYCLE = 0.60f,
+    .dir_inverted = true,
+    .STALL_DUTY_CYCLE = 0.65f,
+    .MIN_DUTY_CYCLE = 0.61f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -156,7 +161,8 @@ drv8251_config_t dc_extra_drv = {
     .in2_tim = &htim2,
     .in2_tim_channel = TIM_CHANNEL_4,
     .dir_inverted = false,
-    .MIN_DUTY_CYCLE = 0.60f,
+    .STALL_DUTY_CYCLE = 0.0f,
+    .MIN_DUTY_CYCLE = 0.0f,
     .MAX_RPS = RPM_TO_RPS(1500),
 };
 
@@ -175,8 +181,7 @@ enc_config_t enc_roll = {
     .enc_a_pin = ROLL_ENC_A_Pin,
     .enc_b_port = ROLL_ENC_B_GPIO_Port,
     .enc_b_pin = ROLL_ENC_B_Pin,
-    .counts_per_rev = ROLL_M_CPR * 4,
-    .gear_ratio = ROLL_M_GEAR_RATIO,
+    .counts_per_rev = ROLL_M_COUNTS_PER_REV,
 };
 
 enc_config_t enc_yaw = {
@@ -184,8 +189,7 @@ enc_config_t enc_yaw = {
     .enc_a_pin = YAW_ENC_A_Pin,
     .enc_b_port = YAW_ENC_B_GPIO_Port,
     .enc_b_pin = YAW_ENC_B_Pin,
-    .counts_per_rev = 10600,
-    .gear_ratio = YAW_M_GEAR_RATIO,
+    .counts_per_rev = YAW_M_COUNTS_PER_REV,
 };
 
 enc_config_t enc_clamp = {
@@ -193,7 +197,7 @@ enc_config_t enc_clamp = {
     .enc_a_pin = KNIFECLAMP_ENC_A_Pin,
     .enc_b_port = KNIFECLAMP_ENC_B_GPIO_Port,
     .enc_b_pin = KNIFECLAMP_ENC_B_Pin,
-    .counts_per_rev = 1024, // TODO: set this to the actual CPR of your encoder
+    .counts_per_rev = CLAMP_M_COUNTS_PER_REV,
 };
 
 // -- Motor Control Structs ---------------------------------------------------
@@ -204,17 +208,19 @@ motor_ctrl_t dc_pitch = {
     .drv = &dc_pitch_drv,
     .enc = &enc_pitch,
     .pid = {0},
+    .pid_gains = pid_gains_pitch,
     .limit_sw = &(gpio_sensor_t){
-      .port = NULL, // no limit switch
+      .port = NULL, 
       .pin = 0xFF,
     },
     .hall_effect = &(gpio_sensor_t){
       .port = GPIOE,
       .pin = GPIO_PIN_13,
-      .threshold = 5,
-      .last_state = false,
-      .debounce_count = 0,
+      .threshold = 2,
+      .active_low = true,
     },
+    // home clockwise until hall effect triggered
+    .homing_speed_rps = 0.2f,
     .adc_port = ADC_PITCH_GPIO_Port,
     .adc_pin = ADC_PITCH_Pin,
     .curr_config = {
@@ -222,61 +228,73 @@ motor_ctrl_t dc_pitch = {
         .adc_index = 2, // ADC RANK 3
         .shunt_resistor_mohm = 24,
     },
+    .angle_limiting = true,
+    .ANGLE_MIN_DEG = -40.0f,
+    .ANGLE_MAX_DEG = 30.0f,
 };
 
 motor_ctrl_t dc_roll = {
     .drv = &dc_roll_drv,
     .enc = &enc_roll,
     .pid = {0},
+    .pid_gains = pid_gains_roll,
     .limit_sw = &(gpio_sensor_t){
-      .port = NULL, // no limit switch
+      .port = NULL, 
       .pin = 0xFF,
     },
     .hall_effect = &(gpio_sensor_t) {
       .port = GPIOE,
       .pin = GPIO_PIN_14,
-      .threshold = 5,
-      .last_state = false,
-      .debounce_count = 0,
+      .threshold = 0,
+      .active_low = true,
     },
+    .homing_speed_rps = 0.2f,
     .adc_port = NULL,
     .adc_pin = 0xFF,
+    .angle_limiting = false,
 };
 
 motor_ctrl_t dc_yaw = {
     .drv = &dc_yaw_drv,
     .enc = &enc_yaw,
     .pid = {0},
+    .pid_gains = pid_gains_yaw,
     .limit_sw = &(gpio_sensor_t){
-      .port = NULL, // no limit switch
+      .port = NULL,
       .pin = 0xFF,
     },
+    // TODO: set homing speed and direction
     .hall_effect = &(gpio_sensor_t) {
       .port = GPIOE,
       .pin = GPIO_PIN_15,
-      .threshold = 5,
-      .last_state = false,
-      .debounce_count = 0,
+      .threshold = 0,
+      .active_low = true,
     },
+    .homing_speed_rps = -0.5f,
     .adc_port = NULL,
     .adc_pin = 0xFF,
+    .angle_limiting = true,
+    .ANGLE_MIN_DEG = 0.0f,
+    .ANGLE_MAX_DEG = 0.0f,
 };
 
-motor_ctrl_t clamp = {
-    .drv = &clamp_drv,
+motor_ctrl_t dc_clamp = {
+    .drv = &dc_clamp_drv,
     .enc = &enc_clamp,
     .pid = {0},
+    .pid_gains = pid_gains_clamp,
     .limit_sw = &(gpio_sensor_t){
-      .port = NULL, // no limit switch
+      .port = NULL, 
       .pin = 0xFF,
     },
+    // TODO: set homing speed and direction
     .hall_effect = &(gpio_sensor_t){
       .port = EXTRA_HALL_GPIO_Port,
       .pin = EXTRA_HALL_Pin,
-      .threshold = 5,
-      .last_state = false,
-      .debounce_count = 0,
+      .threshold = 0,
+      .active_low = true,
     },
+    .homing_speed_rps = 0.5f,
     .adc_port = ADC_KNIFECLAMP_GPIO_Port,
     .adc_pin = ADC_KNIFECLAMP_Pin,
     .curr_config = {
@@ -288,22 +306,24 @@ motor_ctrl_t clamp = {
 
 motor_ctrl_t dc_extra = {
     .drv = &dc_extra_drv,
-    .enc = &enc_yaw, // for testing
+    .enc = NULL,
     .pid = {0},
+    .pid_gains = pid_gains_extra,
     .limit_sw = &(gpio_sensor_t){
-      .port = NULL, // no limit switch
+      .port = NULL,
       .pin = 0xFF,
     },
     .hall_effect = &(gpio_sensor_t){
       .port = NULL,
       .pin = 0xFF,
       .threshold = 0,
-      .last_state = false,
-      .debounce_count = 0,
+      .active_low = false,
     },
     .adc_port = NULL,
     .adc_pin = 0xFF,
 };
+
+motor_ctrl_t *dc_motors[] = {&dc_pitch, &dc_roll, &dc_yaw, &dc_clamp, &dc_extra};
 
 // -- MISC Control Structs ----------------------------------------------------
 
@@ -349,18 +369,14 @@ void RobotConfig_Init(void) {
 
   // Initialize stepper motor configurations
 
-  StepperCtrl_Init(&stepper_underpass, stepper_underpass.config);
+  for (size_t i = 0; i < NUM_STEPPER_MOTORS; i++) {
+    StepperCtrl_Init(stepper_motors[i], stepper_motors[i]->config);
+  }
 
-  MotorCtrl_Init(&dc_pitch, &dc_pitch_drv, &enc_pitch, &dc_pitch.pid,
-      pid_gains_pitch, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&dc_roll, &dc_roll_drv, &enc_roll, &dc_roll.pid,
-      pid_gains_roll, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&dc_yaw, &dc_yaw_drv, &enc_yaw, &dc_yaw.pid,
-      pid_gains_yaw, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&clamp, &clamp_drv, &enc_clamp, &clamp.pid,
-      pid_gains_clamp, CONTROL_TIME_STEP_S);
-  MotorCtrl_Init(&dc_extra, &dc_extra_drv, NULL, &dc_extra.pid,
-      pid_gains_extra, CONTROL_TIME_STEP_S);
+  for (size_t i = 0; i < NUM_DC_MOTORS; i++) {
+    MotorCtrl_Init(dc_motors[i], dc_motors[i]->drv,
+      dc_motors[i]->enc, dc_motors[i]->pid_gains, CONTROL_TIME_STEP_S);
+  }
 
   HAL_TIM_PWM_Start(led_strip.tim, led_strip.tim_channel);
   HAL_TIM_PWM_Start(fan.tim, fan.tim_channel);

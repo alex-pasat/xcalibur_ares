@@ -34,9 +34,15 @@ float Encoder_ComputeVelocityRPS(enc_config_t *enc, float dt_s) {
 }
 
 float Encoder_GetAngleDeg(const enc_config_t *enc) {
+    if (!enc) return 0.0f;
     int32_t ticks_mod = enc->count % (int32_t)enc->counts_per_rev;
     if (ticks_mod < 0) ticks_mod += (int32_t)enc->counts_per_rev;
     return ((float)ticks_mod / (float)enc->counts_per_rev) * DEG_PER_REV;
+}
+
+float Encoder_GetAngleDegContinuous(const enc_config_t *enc) {
+    if (!enc) return 0.0f;
+    return ((float)enc->count / (float)enc->counts_per_rev) * DEG_PER_REV;
 }
 
 void Encoder_Reset(enc_config_t *enc) {

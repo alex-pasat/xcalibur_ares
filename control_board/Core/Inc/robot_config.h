@@ -8,7 +8,7 @@
 // -- Motor Configuration -----------------------------------------------------
 
 // TODO: set these to the actual current limits
-#define CURRENT_THRESHOLD_KNIFECLAMP_MA 300
+#define CURRENT_THRESHOLD_KNIFECLAMP_MA 500
 #define CURRENT_SENSE_THRESHOLD_PITCH_MA 300
 
 #define TIMER_FREQ_HZ 170000000 // SYSCLK Frequency
@@ -26,15 +26,30 @@
 
 // -- Motor Handles ------------------------------------------------------------
 
-// DRV8834 stepper motor configurations
-extern stepper_ctrl_t stepper_underpass;
+#define STEPPER_LIST(X) \
+  X(stepper_underpass)
 
-// DRV8251DDAR DC motor configurations
-extern motor_ctrl_t dc_pitch;
-extern motor_ctrl_t dc_roll;
-extern motor_ctrl_t dc_yaw;
-extern motor_ctrl_t clamp;
-extern motor_ctrl_t dc_extra;
+#define DC_LIST(X) \
+  X(dc_pitch) \
+  X(dc_roll) \
+  X(dc_yaw) \
+  X(dc_clamp) \
+  X(dc_extra)
+
+#define X(name) extern stepper_ctrl_t name;
+STEPPER_LIST(X)
+#undef X
+
+#define X(name) extern motor_ctrl_t name;
+DC_LIST(X)
+#undef X
+
+#define AS_COUNT(name) +1
+#define NUM_STEPPER_MOTORS (0 STEPPER_LIST(AS_COUNT))
+#define NUM_DC_MOTORS (0 DC_LIST(AS_COUNT))
+
+extern stepper_ctrl_t *stepper_motors[];
+extern motor_ctrl_t *dc_motors[];
 
 extern led_pulse_ctrl_t led_strip;
 extern fan_ctrl_t fan;

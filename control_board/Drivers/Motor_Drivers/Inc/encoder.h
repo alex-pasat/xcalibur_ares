@@ -27,7 +27,6 @@ typedef struct {
   int32_t count;             // Absolute position in ticks
   int32_t prev_count;        // Previous count, used for velocity calculation
   uint32_t counts_per_rev;   // Encoder resolution (ticks per revolution)
-  uint16_t gear_ratio;      // Gear ratio between output shaft and encoder 
 } enc_config_t;
 
 // -- FUNCTION PROTOTYPES -----------------------------------------------------
@@ -44,16 +43,17 @@ float Encoder_ComputeVelocityRPS(enc_config_t *enc, float dt_s);
 /**
  * @brief Get the angle of the encoder in degrees
  * @param enc Pointer to the encoder configuration struct
- * @return Angle in degrees
+ * @return Angle in degrees (wrapped to [0, 360))
  */
 float Encoder_GetAngleDeg(const enc_config_t *enc);
+
+float Encoder_GetAngleDegContinuous(const enc_config_t *enc);
 
 /**
  * @brief Reset the encoder count and state
  * @param enc Pointer to the encoder configuration struct
  */
 void Encoder_Reset(enc_config_t *enc);
-
 
 /**
   * @brief EXTI callback to be called from HAL_GPIO_EXTI_Callback() in main.c

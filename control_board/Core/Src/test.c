@@ -5,6 +5,7 @@
 
 #include "test.h"
 #include "encoder.h"
+#include "stm32g4xx_hal.h"
 #include "usb_device.h"
 #include "robot_config.h"
 #include "robot_control.h"
@@ -56,6 +57,7 @@ static void check(bool cond, const char *name) {
 
 #define ASSERT(c, n)        check((c), (n))
 #define NEAR(a, b, t, n)    check(((a)-(b))<(t) && ((b)-(a))<(t), (n))
+#define NEAR_RELATIVE(a, b, t, n) check(fabs((a) - (b)) <= (fabs(b) * (t)), (n))
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -152,109 +154,6 @@ static void curr_one(motor_ctrl_t *m, const char *nm,
     MotorCtrl_Disable(m);
 }
 
-static void hall_one(motor_ctrl_t *m, const char *nm) {
-    tprintf("\r\n-- Hall: %s --\r\n", nm);
-    char buf[96];
-
-    gpio_sensor_t *h = m->hall_effect;
-    if (!h) { tprintf("  SKIP: no hall sensor\r\n"); return; }
-
-    // let Update run for 20ms to settle the debounce state
-    for (int i = 0; i < 20; i++) { MotorCtrl_Update(m); HAL_Delay(1); }
-    snprintf(buf, sizeof(buf), "%s hall: clear at rest", nm);
-    ASSERT(h->state == false, buf);
-
-    snprintf(buf, sizeof(buf), "Rotate %s motor slowly past hall sensor", nm);
-    prompt(buf);
-    MotorCtrl_SetTarget(m, 0.3f);
-    bool seen = false;
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() - t < 5000) {
-        MotorCtrl_Update(m);   // debounces hall internally, updates h->state
-        if (h->state) { seen = true; break; }
-        HAL_Delay(1);
-    }
-    MotorCtrl_SetTarget(m, 0.0f);
-    run_ms(m, 200);
-    MotorCtrl_Disable(m);
-
-    snprintf(buf, sizeof(buf), "%s hall: triggered during rotation", nm);
-    ASSERT(seen, buf);
-    tprintf("  triggered: %s\r\n", seen ? "yes" : "no");
-}
-
-// Tests linearity of duty cycle vs speed — useful for feedforward tuning
-static void linearity_one(motor_ctrl_t *m, const char *nm) {
-    tprintf("\r\n-- Linearity: %s --\r\n", nm);
-
-    float duties[] = { 0.25f, 0.50f, 0.75f, 1.0f };
-    float speeds[4];
-
-    for (int i = 0; i < 4; i++) {
-        DRV8251_SetDuty(m->drv, duties[i]);
-        uint32_t t = HAL_GetTick();
-        while (HAL_GetTick() - t < 1500) { MotorCtrl_Update(m); HAL_Delay(1); }
-        speeds[i] = m->current_rps;
-        tprintf("  duty=%.2f → %.2f rps\r\n", duties[i], speeds[i]);
-    }
-
-    // Check monotonically increasing
-    bool monotonic = true;
-    for (int i = 1; i < 4; i++)
-        if (speeds[i] <= speeds[i-1]) { monotonic = false; break; }
-    ASSERT(monotonic, "linearity: speed increases monotonically with duty");
-
-    MotorCtrl_Disable(m);
-}
-
-// Tests that the motor actually brakes and doesn't just coast
-static void brake_one(motor_ctrl_t *m, const char *nm) {
-    tprintf("\r\n-- Brake: %s --\r\n", nm);
-    char buf[96];
-
-    // Spin up
-    DRV8251_SetDuty(m->drv, 0.8f);
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() - t < 1500) { MotorCtrl_Update(m); HAL_Delay(1); }
-    float running = m->current_rps;
-
-    // Brake and measure how quickly it stops
-    DRV8251_Brake(m->drv);
-    uint32_t brake_time = HAL_GetTick();
-    while (HAL_GetTick() - brake_time < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
-    float after_brake = fabsf(m->current_rps);
-
-    snprintf(buf, sizeof(buf), "%s brake: stops within 2s (running=%.2f after=%.2f)",
-             nm, running, after_brake);
-    ASSERT(after_brake < 0.1f, buf);
-    tprintf("  running=%.2f  after_brake=%.2f rps\r\n", running, after_brake);
-
-    MotorCtrl_Disable(m);
-}
-
-// Checks that the motor stays still under small disturbances with PID active
-static void disturbance_one(motor_ctrl_t *m, const char *nm) {
-    tprintf("\r\n-- Disturbance Rejection: %s --\r\n", nm);
-    char buf[96];
-
-    MotorCtrl_SetTarget(m, 1.0f);
-    uint32_t t = HAL_GetTick();
-    while (HAL_GetTick() - t < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
-
-    float before = m->current_rps;
-    prompt("Briefly resist the yaw motor shaft by hand then release");
-
-    t = HAL_GetTick();
-    while (HAL_GetTick() - t < 2000) { MotorCtrl_Update(m); HAL_Delay(1); }
-    float recovered = m->current_rps;
-
-    snprintf(buf, sizeof(buf), "%s disturbance: recovers to 1.0 rps (got %.2f)", nm, recovered);
-    NEAR(recovered, 1.0f, 0.3f, buf);
-    tprintf("  before=%.2f  recovered=%.2f rps\r\n", before, recovered);
-
-    MotorCtrl_Disable(m);
-}
-
 // ============================================================================
 // Public test functions
 // ============================================================================
@@ -272,13 +171,6 @@ void Test_CurrentSensing(void) {
     curr_one(&dc_pitch, "pitch", 800,  2000);
     curr_one(&clamp,    "clamp", 600,  1500);
     tprintf("  roll, yaw: no ADC configured — skipped\r\n");
-}
-
-void Test_Characterization(void) {
-    tprintf("\r\n=== MOTOR CHARACTERIZATION ===\r\n");
-    linearity_one(&dc_yaw,  "yaw");
-    brake_one(&dc_yaw,      "yaw");
-    disturbance_one(&dc_yaw, "yaw");
 }
 
 void Test_Stepper(void) {
@@ -348,14 +240,6 @@ void Test_LimitSwitch(void) {
     tprintf("  threshold: %u ticks = %u ms\r\n", sw->threshold, sw->threshold);
 }
 
-void Test_HallSensors(void) {
-    tprintf("\r\n=== HALL EFFECT TESTS ===\r\n");
-    hall_one(&dc_pitch, "pitch");
-    hall_one(&dc_roll,  "roll");
-    hall_one(&dc_yaw,   "yaw");
-    tprintf("  clamp: no hall sensor — skipped\r\n");
-}
-
 void Test_AdcDma(void) {
     tprintf("\r\n=== ADC DMA TESTS ===\r\n");
 
@@ -406,32 +290,73 @@ void Test_MinDuty(motor_ctrl_t *m) {
     DRV8251_SetDuty(m->drv, 0.0f);
 }
 
-void Test_EncoderCPR(motor_ctrl_t *m) {
-    tprintf("\r\n=== ENCODER CPR TEST ===\r\n");
+void Test_EncoderCPRHall(motor_ctrl_t *m, const char *nm) {
+    tprintf("\r\n=== ENCODER CPR TEST: %s ===\r\n", nm);
 
-    extern tiny_ring_buffer_t usb_rx_ring_buf;
+    gpio_sensor_t *hall = m->hall_effect;
+    if (!hall || hall->port == NULL) {
+        tprintf("  SKIP: no hall sensor configured\r\n");
+        return;
+    }
 
-    // Reset count
+    // Reset encoder count
     __disable_irq();
-    m->enc->count = 0;
+    m->enc->count      = 0;
     m->enc->prev_count = 0;
     __enable_irq();
 
-    tprintf("Motor running slowly — send any USB message to stop\r\n");
+    MotorCtrl_SetTarget(m, 1.0f);
 
-    // Run motor slowly open loop
-    DRV8251_SetDuty(m->drv, m->drv->MIN_DUTY_CYCLE);
+    uint32_t   revolutions       = 0;
+    bool       last_hall_state   = false;
+    int32_t    counts_at_last_rev = 0;
+    int32_t    last_rev_counts   = 0;
+    const uint32_t RUN_DURATION_MS = 20000;
 
-    while (!tiny_ring_buffer_count(&usb_rx_ring_buf)) {
-        tprintf("count=%ld\r\n", m->enc->count);
-        HAL_Delay(200);
+    uint32_t t = HAL_GetTick();
+    while (HAL_GetTick() - t < RUN_DURATION_MS) {
+        MotorCtrl_Update(m);
+
+        // Detect rising edge on hall
+        if (m->hall_triggered && !last_hall_state) {
+            int32_t current_count  = m->enc->count;
+            last_rev_counts        = abs(current_count - counts_at_last_rev);
+            counts_at_last_rev     = current_count;
+            revolutions++;
+            tprintf("  REV %lu: count=%ld  counts_this_rev=%ld\r\n",
+                    revolutions, current_count, last_rev_counts);
+        }
+        last_hall_state = m->hall_triggered;
+
+        HAL_Delay(1);
     }
-    tiny_ring_buffer_clear(&usb_rx_ring_buf);
 
-    DRV8251_SetDuty(m->drv, 0.0f);
+    MotorCtrl_SetTarget(m, 0.0f);
+    MotorCtrl_Update(m);
 
-    tprintf("\r\nFinal count: %ld\r\n", m->enc->count);
-    tprintf("Expected per output rev: %ld\r\n", m->enc->counts_per_rev);
+    float avg_cpr = (revolutions > 0)
+                  ? (float)abs(m->enc->count) / (float)revolutions
+                  : 0.0f;
+
+    tprintf("\r\n  === Results: %s ===\r\n", nm);
+    tprintf("  Total count       : %ld\r\n", m->enc->count);
+    tprintf("  Revolutions       : %lu\r\n", revolutions);
+    tprintf("  Avg counts/rev    : %.1f\r\n", avg_cpr);
+    tprintf("  Config counts/rev : %lu\r\n", m->enc->counts_per_rev);
+    tprintf("  Last rev counts   : %ld\r\n", last_rev_counts);
+
+    char buf[96];
+    snprintf(buf, sizeof(buf), "%s CPR: hall triggered at least once", nm);
+    ASSERT(revolutions > 0, buf);
+
+    if (revolutions > 0) {
+        float err = fabsf(avg_cpr - (float)m->enc->counts_per_rev)
+                  / (float)m->enc->counts_per_rev;
+        snprintf(buf, sizeof(buf),
+                 "%s CPR: measured %.1f vs config %lu (%.1f%% error)",
+                 nm, avg_cpr, m->enc->counts_per_rev, err * 100.0f);
+        ASSERT(err < 0.10f, buf);
+    }
 }
 
 void Test_MaxSpeed(motor_ctrl_t *m, const char *nm) {
@@ -499,7 +424,7 @@ void Test_MinSpeed(motor_ctrl_t *m, const char *nm) {
     tprintf("\r\n-- Min Speed: %s --\r\n", nm);
     char buf[96];
 
-    DRV8251_SetDuty(m->drv, m->drv->MIN_DUTY_CYCLE);
+    DRV8251_SetDuty(m->drv, m->drv->STALL_DUTY_CYCLE);
     uint32_t t = HAL_GetTick();
     uint32_t last_tick = t;
     float sum = 0.0f;
@@ -536,7 +461,7 @@ void Test_Stiction(motor_ctrl_t *m, const char *nm) {
     // -----------------------------------------------------------------------
     tprintf("  Phase 1: finding stiction (start) duty...\r\n");
 
-    for (float duty = 0.0f; duty <= 1.0f; duty += 0.01f) {
+    for (float duty = 0.5f; duty <= 1.0f; duty += 0.01f) {
         DRV8251_SetDuty(m->drv, duty);
         HAL_Delay(1000);  // settle time at each step
 
@@ -618,19 +543,19 @@ void Test_PID(motor_ctrl_t *m, const char *nm, float tgt) {
 
     MotorCtrl_SetTarget(m, tgt);
     run_ms(m, 5000);
-    snprintf(buf, sizeof(buf), "%s PID: reaches %.1f rps (got %.2f)", nm, tgt, m->current_rps);
-    NEAR(m->current_rps, tgt, 0.3f, buf);
+    snprintf(buf, sizeof(buf), "%s PID: reaches %.3f rps (got %.3f)", nm, tgt, m->current_rps);
+    NEAR_RELATIVE(m->current_rps, tgt, 0.3f, buf);
 
     float half = tgt * 0.5f;
     MotorCtrl_SetTarget(m, half);
     run_ms(m, 5000);
-    snprintf(buf, sizeof(buf), "%s PID: tracks step to %.1f (got %.2f)", nm, half, m->current_rps);
-    NEAR(m->current_rps, half, 0.3f, buf);
+    snprintf(buf, sizeof(buf), "%s PID: tracks step to %.3f (got %.3f)", nm, half, m->current_rps);
+    NEAR_RELATIVE(m->current_rps, half, 0.3f, buf);
 
     MotorCtrl_SetTarget(m, 0.0f);
     run_ms(m, 2000);
-    snprintf(buf, sizeof(buf), "%s PID: stops cleanly (got %.2f)", nm, m->current_rps);
-    NEAR(m->current_rps, 0.0f, 0.15f, buf);
+    snprintf(buf, sizeof(buf), "%s PID: stops cleanly (got %.3f)", nm, m->current_rps);
+    NEAR_RELATIVE(m->current_rps, 0.0f, 0.15f, buf);
 
     float peak = 0.0f;
     MotorCtrl_SetTarget(m, tgt);
@@ -640,10 +565,102 @@ void Test_PID(motor_ctrl_t *m, const char *nm, float tgt) {
         if (m->current_rps > peak) peak = m->current_rps;
         HAL_Delay(1);
     }
-    snprintf(buf, sizeof(buf), "%s PID: overshoot < 25%% (peak=%.2f)", nm, peak);
+    snprintf(buf, sizeof(buf), "%s PID: overshoot < 25%% (peak=%.3f)", nm, peak);
     ASSERT(peak < tgt * 1.25f, buf);
 
-    tprintf("  settled=%.2f  peak=%.2f rps\r\n", m->current_rps, peak);
+    tprintf("  settled=%.3f  peak=%.3f rps\r\n", m->current_rps, peak);
     MotorCtrl_Disable(m);
 }
 
+
+void The_Test(void) {
+  // for testing, await USB message (any message) before starting main loop
+  USB_AwaitInput();
+  char buf[100];
+
+  USB_SendString("Press Enter to Start Moving...");
+  USB_AwaitInput();
+  MotorCtrl_SetTarget(&dc_pitch, -0.10f);
+  USB_SendString("Press Enter to Stop...");
+  USB_AwaitInput();
+  MotorCtrl_Stop(&dc_pitch);
+  float angle = Encoder_GetAngleDegContinuous(dc_pitch.enc);
+  int32_t enc_counts = dc_pitch.enc->count;
+  sprintf(buf, "Angle: %.2f deg, Encoder Counts: %ld\n", angle, enc_counts);
+  USB_SendString(buf);
+
+//   USB_SendString("Press Enter to Home Pitch Motor...");
+//   USB_AwaitInput();
+
+//   // Home to Motor at the end to reset
+//   MotorCtrl_StartHoming(&dc_pitch);
+//   while (!dc_pitch.hall_triggered) {
+//     uint8_t hall = HAL_GPIO_ReadPin(dc_pitch.hall_effect->port, dc_pitch.hall_effect->pin);
+//     sprintf((char*)buf, "Hall: %d\n", hall);
+//     USB_SendString(buf);
+//     HAL_Delay(10);
+//   }
+
+//   MotorCtrl_Stop(&dc_pitch);
+//   MotorCtrl_ReEnableLimits(&dc_pitch);
+
+//   float final_angle = Encoder_GetAngleDeg(dc_pitch.enc);
+//   sprintf(buf, "Final Angle after Homing: %.2f deg\n", final_angle);
+//   USB_SendString(buf);
+
+  // USB_SendString("Press Enter to Test Angle Limits...\n");
+  // USB_AwaitInput();
+  // MotorCtrl_SetTarget(&dc_pitch, -0.15f);
+  // while (1) {
+  //   float current_angle = Encoder_GetAngleDegContinuous(dc_pitch.enc);
+  //   sprintf(buf, "Current Angle: %.2f deg\n", current_angle);
+  //   USB_SendString(buf);
+  //   HAL_Delay(100);
+  // } 
+
+  // USB_SendString("Press Enter to Continue...");
+  // USB_AwaitInput();
+
+//   USB_SendString("Press Enter to Home Underpass...");
+//   USB_AwaitInput();
+
+//   StepperCtrl_StartHoming(&stepper_underpass);
+//   while(StepperCtrl_Run(&stepper_underpass));
+//   StepperCtrl_SetHome(&stepper_underpass);
+//   USB_SendString("Stepper underpass homing complete.\n");
+  
+//   USB_SendString("Press Enter to Move Underpass...");
+//   USB_AwaitInput();
+//   StepperCtrl_SetTarget(&stepper_underpass, 5000);
+//   while (StepperCtrl_Run(&stepper_underpass));
+
+//   USB_SendString("Stepper move complete.\n");
+//   USB_AwaitInput();
+
+    USB_SendString("Press Enter to Home Yaw Motor...");
+    USB_AwaitInput();
+
+    DRV8251_SetDuty(dc_yaw.drv, -1.0f);
+
+    USB_SendString("Press Enter to Home Yaw Motor...");
+    USB_AwaitInput();
+
+    DRV8251_SetDuty(dc_yaw.drv, 1.0f);
+
+    USB_SendString("Press Enter to Home Yaw Motor...");
+    USB_AwaitInput();
+
+    MotorCtrl_StartHoming(&dc_yaw);
+    while (!dc_yaw.hall_triggered) {
+        uint8_t hall = HAL_GPIO_ReadPin(dc_yaw.hall_effect->port, dc_yaw.hall_effect->pin);
+        sprintf(buf, "Hall: %d\n", hall);
+        USB_SendString(buf);
+        HAL_Delay(10);
+    }
+    MotorCtrl_Stop(&dc_yaw);
+    MotorCtrl_ReEnableLimits(&dc_yaw);
+    USB_SendString("Yaw homing complete.\n");
+
+    USB_SendString("Press Enter to Continue...");
+    USB_AwaitInput();
+}

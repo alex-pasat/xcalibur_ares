@@ -26,8 +26,8 @@ typedef enum {
   SIG_KNIFE_DETECTED,
   SIG_KNIFE_REMOVED,
 
+  SIG_TICK,
   SIG_MOVE_COMPLETE,
-
 } robot_signal_t;
 
 typedef enum {
@@ -77,11 +77,11 @@ void RobotState_Init(void);
  */
 void RobotState_SendSignal(robot_signal_t sig, const void *data);
 
+void RobotState_DecoderHighFreq(void);
+
 /**
- * @brief Periodic 10ms tick — polls sensors, watchdog, and move completion.
- *        Called from main loop when TIM6 10ms flag is set.
- *        Do not call directly from interrupt context.
+ *  @brief Decodes incoming signals and updates the robot state.
  */
-void RobotState_Tick(void);
+void RobotState_Decoder(void);
 
 #endif /* ROBOT_STATE_H */

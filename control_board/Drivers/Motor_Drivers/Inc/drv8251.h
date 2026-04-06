@@ -48,7 +48,6 @@ typedef struct {
     bool dir_inverted;
     uint32_t tim_autoreload;
     float duty; // current duty cycle
-
 } drv8251_config_t;
 
 // -- FUNCTION PROTOTYPES -----------------------------------------------------

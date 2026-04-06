@@ -18,6 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "encoder.h"
+#include "stm32g4xx_hal_gpio.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -41,6 +43,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/_intsup.h>
 
 #include "test.h"
 
@@ -138,7 +141,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
       break;
     case KNIFECLAMP_ENC_A_Pin:
     case KNIFECLAMP_ENC_B_Pin:
-        Encoder_EXTI_Callback(clamp.enc);
+        Encoder_EXTI_Callback(dc_clamp.enc);
+      break;
+      
+    default:
       break;
   }
 }
@@ -147,10 +153,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim->Instance == TIM6) {
 
     // 1 ms update
-    MotorCtrl_Update(&dc_yaw);
-    MotorCtrl_Update(&dc_pitch);
-    MotorCtrl_Update(&dc_roll);
-    MotorCtrl_Update(&clamp);
+    for (int i = 0; i < NUM_DC_MOTORS; i++) {
+      MotorCtrl_Update(dc_motors[i]);
+    }
 
     // 10 ms update
     if (++div_10ms >= 10) {
@@ -163,11 +168,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi) {
   if (hspi->Instance == SPI1) {
     // buffer the received byte into the SPI RX ring buffer
-    uint8_t data = spi_rx_raw;
-    tiny_ring_buffer_insert(&spi_rx_buf, &data);
+    tiny_ring_buffer_insert(&spi_rx_buf, &spi_rx_raw);
 
     // pop next byte to transmit from the SPI TX ring buffer, or send empty byte if none
-    spi_tx_raw = ROBOT_HMI_CMD_NONE;
     tiny_ring_buffer_remove(&spi_tx_buf, &spi_tx_raw);
 
     // start next SPI transmit/receive
@@ -227,24 +230,11 @@ int main(void)
   HAL_TIM_Base_Start(&htim7);
   RobotConfig_Init();
 
+  LED_SetDuty(&led_strip, 1.0f);
+
+  // The_Test();
+
   RobotState_Init();
-
-  HAL_Delay(100);
-
-  #if 0
-  // for testing, await USB message (any message) before starting main loop
-  extern tiny_ring_buffer_t usb_rx_ring_buf;
-  while (!tiny_ring_buffer_count(&usb_rx_ring_buf)) {
-    HAL_Delay(100);
-  }
-  tiny_ring_buffer_clear(&usb_rx_ring_buf);
-
-  // Test_MinDuty(&dc_pitch);
-  // Test_EncoderCPR(&dc_pitch);
-  Test_MaxSpeed(&dc_pitch, "pitch");
-  Test_MinSpeed(&dc_pitch, "pitch");
-  // Test_PID(&dc_pitch, "pitch", 1.0f);
-  #endif
 
   /* USER CODE END 2 */
 
@@ -254,15 +244,15 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+    // /* USER CODE BEGIN 3 */
 
-    StepperCtrl_Run(&stepper_underpass);
+    RobotState_DecoderHighFreq();
 
     if (flag_10ms) {
-      flag_10ms = 0;
-      RobotState_Tick();
-      LED_PulseUpdate(&led_strip);
-    } 
+     flag_10ms = 0;
+     RobotState_Decoder();
+    //  LED_PulseUpdate(&led_strip);
+    }
   }
   /* USER CODE END 3 */
 }
@@ -1155,13 +1145,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LOAD_CELL_OUT_Pin UNDERPASS_LIMIT_Pin KNIFECLAMP_LIMIT_Pin BEVEL_LIMIT_Pin
-                           EXTRA_LIMIT_Pin PITCH_HALL_Pin ROLL_HALL_Pin YAW_HALL_Pin */
-  GPIO_InitStruct.Pin = LOAD_CELL_OUT_Pin|UNDERPASS_LIMIT_Pin|KNIFECLAMP_LIMIT_Pin|BEVEL_LIMIT_Pin
-                          |EXTRA_LIMIT_Pin|PITCH_HALL_Pin|ROLL_HALL_Pin|YAW_HALL_Pin;
+  /*Configure GPIO pin : LOAD_CELL_OUT_Pin */
+  GPIO_InitStruct.Pin = LOAD_CELL_OUT_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  HAL_GPIO_Init(LOAD_CELL_OUT_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : LOAD_CELL_SCLK_Pin */
   GPIO_InitStruct.Pin = LOAD_CELL_SCLK_Pin;
@@ -1170,10 +1158,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LOAD_CELL_SCLK_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : UNDERPASS_LIMIT_Pin KNIFECLAMP_LIMIT_Pin BEVEL_LIMIT_Pin EXTRA_LIMIT_Pin
+                           PITCH_HALL_Pin ROLL_HALL_Pin YAW_HALL_Pin */
+  GPIO_InitStruct.Pin = UNDERPASS_LIMIT_Pin|KNIFECLAMP_LIMIT_Pin|BEVEL_LIMIT_Pin|EXTRA_LIMIT_Pin
+                          |PITCH_HALL_Pin|ROLL_HALL_Pin|YAW_HALL_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
   /*Configure GPIO pin : EXTRA_HALL_Pin */
   GPIO_InitStruct.Pin = EXTRA_HALL_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(EXTRA_HALL_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : KNIFECLAMP_ENC_B_Pin KNIFECLAMP_ENC_A_Pin YAW_ENC_B_Pin YAW_ENC_A_Pin
