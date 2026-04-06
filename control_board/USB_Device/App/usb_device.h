@@ -86,6 +86,8 @@ void USB_SendString(const char *str);
 
 uint8_t CDC_IsConnected(void);
 
+void USB_AwaitInput(void);
+
 /* USER CODE END FD */
 /**
   * @}

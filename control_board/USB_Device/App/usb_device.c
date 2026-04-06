@@ -70,6 +70,15 @@ uint8_t CDC_IsConnected(void) {
     return (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED);
 }
 
+void USB_AwaitInput(void) {
+    // for testing, await USB message (any message) before starting main loop
+    extern tiny_ring_buffer_t usb_rx_ring_buf;
+    while (!tiny_ring_buffer_count(&usb_rx_ring_buf)) {
+        HAL_Delay(100);
+    }
+    tiny_ring_buffer_clear(&usb_rx_ring_buf);
+}
+
 /* USER CODE END 1 */
 
 /**

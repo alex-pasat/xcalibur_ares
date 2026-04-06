@@ -5,6 +5,7 @@
 
  // -- INCLUDES ---------------------------------------------------------------
 #include "encoder.h"
+#include "motor_utils.h"
 
 // -- PRIVATE VARIABLES -------------------------------------------------------
 
@@ -22,22 +23,26 @@ void Encoder_Init(enc_config_t *enc) {
     uint8_t b_state = HAL_GPIO_ReadPin(enc->enc_b_port, enc->enc_b_pin) ? 1 : 0;
     enc->last_state = (a_state << 1) | b_state;
     enc->count = 0;
-    enc->velocity_rps = 0.0f;
 }
 
-float Encoder_ComputeVelocity(enc_config_t *enc, float dt_s) {
+float Encoder_ComputeVelocityRPS(enc_config_t *enc, float dt_s) {
     __disable_irq();
     int32_t delta_ticks = enc->count - enc->prev_count;
     enc->prev_count = enc->count;
     __enable_irq();
-    enc->velocity_rps = ((float)delta_ticks / (float)enc->counts_per_rev) / dt_s;
-    return enc->velocity_rps;
+    return ((float)delta_ticks / (float)enc->counts_per_rev) / dt_s;
 }
 
 float Encoder_GetAngleDeg(const enc_config_t *enc) {
+    if (!enc) return 0.0f;
     int32_t ticks_mod = enc->count % (int32_t)enc->counts_per_rev;
-    if (ticks_mod < 0) ticks_mod += enc->counts_per_rev;
-    return ((float)ticks_mod / (float)enc->counts_per_rev) * 360.0f;
+    if (ticks_mod < 0) ticks_mod += (int32_t)enc->counts_per_rev;
+    return ((float)ticks_mod / (float)enc->counts_per_rev) * DEG_PER_REV;
+}
+
+float Encoder_GetAngleDegContinuous(const enc_config_t *enc) {
+    if (!enc) return 0.0f;
+    return ((float)enc->count / (float)enc->counts_per_rev) * DEG_PER_REV;
 }
 
 void Encoder_Reset(enc_config_t *enc) {
