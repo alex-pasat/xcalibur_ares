@@ -1,0 +1,73 @@
+# def profileSmoothing(blade_profile, window):
+#     if window % 2 == 0:
+#         raise ValueError("Window size must be odd for centered average.")
+
+#     x = blade_profile[:,0,0]
+#     y = blade_profile[:,0,1]
+
+#     kernel = np.ones(window) / window
+
+#     # Only compute where full window exists
+#     x_smooth = np.convolve(x, kernel, mode='valid')
+#     y_smooth = np.convolve(y, kernel, mode='valid')
+
+#     # Trim original profile to match valid region
+#     k = window // 2
+#     blade_trimmed = blade_profile[k:-k].copy()
+
+#     blade_trimmed[:,0,0] = x_smooth
+#     blade_trimmed[:,0,1] = y_smooth
+
+#     return blade_trimmed
+
+
+# def profileSmoothing(blade_profile, window, polyorder=2):
+#     """
+#     Smooth blade profile using Savitzky-Golay filter.
+#     window: odd integer, filter length
+#     polyorder: polynomial order for Savitzky-Golay
+#     """
+#     if window % 2 == 0:
+#         raise ValueError("Window size must be odd for Savitzky-Golay.")
+    
+#     x = blade_profile[:,0,0]
+#     y = blade_profile[:,0,1]
+    
+#     x_smooth = savgol_filter(x, window, polyorder, mode='interp')
+#     y_smooth = savgol_filter(y, window, polyorder, mode='interp')
+    
+#     blade_smooth = blade_profile.copy()
+#     blade_smooth[:,0,0] = x_smooth
+#     blade_smooth[:,0,1] = y_smooth
+    
+#     return blade_smooth
+
+
+
+# def tangent(curve, i):
+#     samples = 500
+#     v = np.array([np.mean(curve[i-samples:i-1,0,0])-np.mean(curve[i+1:i+samples,0,0]),np.mean(curve[i-samples:i-1,0,1])-np.mean(curve[i+1:i+samples,0,1]),0.0], dtype=float)
+#     v = v / np.linalg.norm(v)
+#     return v
+
+
+
+
+# def tangent(blade_profile, window=101, polyorder=2):
+#     """
+#     Compute tangent vectors using Savitzky-Golay derivatives.
+#     Returns Nx3 array of normalized tangent vectors.
+#     """
+#     x = blade_profile[:,0,0]
+#     y = blade_profile[:,0,1]
+    
+#     # derivative of x and y w.r.t index
+#     dx = savgol_filter(x, window, polyorder, deriv=1, mode='interp')
+#     dy = savgol_filter(y, window, polyorder, deriv=1, mode='interp')
+    
+#     tangents = np.vstack([dx, dy, np.zeros_like(dx)]).T
+#     tangents /= np.linalg.norm(tangents, axis=1)[:, None]
+    
+#     return tangents
+
+

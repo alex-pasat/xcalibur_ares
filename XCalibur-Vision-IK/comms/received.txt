@@ -1,0 +1,503 @@
+Time: 2026-03-17 13:46:37
+
+--- Session started: 2026-03-17 13:46:52 ---
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Lost connection
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Waiting for device...
+Waiting for device...
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+
+--- Session started: 2026-03-17 14:15:44 ---
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+
+--- Session started: 2026-03-17 14:16:24 ---
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
+Connected
+Got START
+Wrote knife detected!
+Lost connection
