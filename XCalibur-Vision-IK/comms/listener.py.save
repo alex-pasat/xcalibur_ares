@@ -1,0 +1,16 @@
+import serial
+from datetime import datetime
+
+ser = serial.Serial('/dev/ttyGS0', 115200, timeout=None)
+print("Waiting for message...")
+
+message = ser.readline().decode().strip()
+
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+with open('/home/chuddycholo/Documents/comms/received.txt', 'w') as f:
+    f.write(f"Time: {timestamp}\n")
+    f.write(f"Message: {message}\n")
+
+print(f"Written: {message} at {timestamp}")
+ser.close()

@@ -1,0 +1,3 @@
+FROM arm64v8/python:3.13
+RUN pip install --no-cache-dir roboticstoolbox-python
+RUN find / -name "roboticstoolbox*.whl" 2>/dev/null
